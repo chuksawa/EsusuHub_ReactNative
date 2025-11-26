@@ -1,0 +1,218 @@
+import React from 'react';
+import {NavigationContainer} from '@react-navigation/native';
+import {createStackNavigator} from '@react-navigation/stack';
+import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+
+// Screens
+import LoginScreen from '../screens/auth/LoginScreen';
+import RegisterScreen from '../screens/auth/RegisterScreen';
+import HomeScreen from '../screens/home/HomeScreen';
+import GroupsScreen from '../screens/groups/GroupsScreen';
+import GroupDetailScreen from '../screens/groups/GroupDetailScreen';
+import CreateGroupScreen from '../screens/groups/CreateGroupScreen';
+import PaymentScreen from '../screens/payment/PaymentScreen';
+import ProfileScreen from '../screens/profile/ProfileScreen';
+import BankingScreen from '../screens/banking/BankingScreen';
+import NotificationsScreen from '../screens/notifications/NotificationsScreen';
+import AdminScreen from '../screens/admin/AdminScreen';
+
+import {colors} from '../theme/colors';
+import {SecureStorageService} from '../services/storage/secureStorage';
+
+export type RootStackParamList = {
+  Auth: undefined;
+  Main: undefined;
+  Login: undefined;
+  Register: undefined;
+  GroupDetail: {groupId: string};
+  CreateGroup: undefined;
+  Payment: {groupId?: string; groupName?: string; monthlyContribution?: number};
+  Admin: {groupId: string};
+};
+
+export type MainTabParamList = {
+  Home: undefined;
+  Groups: undefined;
+  History: undefined;
+};
+
+const Stack = createStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator<MainTabParamList>();
+
+// Main Tab Navigator
+function MainTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: colors.primary[600],
+        tabBarInactiveTintColor: colors.gray[500],
+        tabBarStyle: {
+          borderTopWidth: 1,
+          borderTopColor: colors.gray[200],
+          paddingBottom: 8,
+          paddingTop: 8,
+          height: 60,
+        },
+      }}>
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{
+          tabBarLabel: 'Home',
+          tabBarIcon: ({color, size}) => (
+            <Icon name="view-dashboard" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Groups"
+        component={GroupsScreen}
+        options={{
+          tabBarLabel: 'Groups',
+          tabBarIcon: ({color, size}) => (
+            <Icon name="account-group" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="History"
+        component={HomeScreen} // Using HomeScreen with history tab for now
+        options={{
+          tabBarLabel: 'History',
+          tabBarIcon: ({color, size}) => (
+            <Icon name="history" size={size} color={color} />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+}
+
+// Root Navigator
+export default function AppNavigator() {
+  const [isAuthenticated, setIsAuthenticated] = React.useState<boolean | null>(
+    null,
+  );
+
+  React.useEffect(() => {
+    checkAuthStatus();
+  }, []);
+
+  const checkAuthStatus = async () => {
+    const loggedIn = await SecureStorageService.isUserLoggedIn();
+    setIsAuthenticated(loggedIn);
+  };
+
+  if (isAuthenticated === null) {
+    // Show loading screen
+    return null;
+  }
+
+  return (
+    <NavigationContainer>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          cardStyle: {backgroundColor: colors.background.light},
+        }}>
+        {!isAuthenticated ? (
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Register" component={RegisterScreen} />
+          </>
+        ) : (
+          <>
+            <Stack.Screen name="Main" component={MainTabs} />
+            <Stack.Screen
+              name="GroupDetail"
+              component={GroupDetailScreen}
+              options={{
+                headerShown: true,
+                title: 'Group Details',
+                headerStyle: {
+                  backgroundColor: colors.primary[600],
+                },
+                headerTintColor: colors.text.white,
+              }}
+            />
+            <Stack.Screen
+              name="CreateGroup"
+              component={CreateGroupScreen}
+              options={{
+                headerShown: true,
+                title: 'Create Group',
+                headerStyle: {
+                  backgroundColor: colors.primary[600],
+                },
+                headerTintColor: colors.text.white,
+              }}
+            />
+            <Stack.Screen
+              name="Payment"
+              component={PaymentScreen}
+              options={{
+                headerShown: true,
+                title: 'Make Payment',
+                headerStyle: {
+                  backgroundColor: colors.primary[600],
+                },
+                headerTintColor: colors.text.white,
+              }}
+            />
+            <Stack.Screen
+              name="Profile"
+              component={ProfileScreen}
+              options={{
+                headerShown: true,
+                title: 'Profile',
+                headerStyle: {
+                  backgroundColor: colors.primary[600],
+                },
+                headerTintColor: colors.text.white,
+              }}
+            />
+            <Stack.Screen
+              name="Banking"
+              component={BankingScreen}
+              options={{
+                headerShown: true,
+                title: 'EsusuBank',
+                headerStyle: {
+                  backgroundColor: colors.blue[600],
+                },
+                headerTintColor: colors.text.white,
+              }}
+            />
+            <Stack.Screen
+              name="Notifications"
+              component={NotificationsScreen}
+              options={{
+                headerShown: true,
+                title: 'Notifications',
+                headerStyle: {
+                  backgroundColor: colors.primary[600],
+                },
+                headerTintColor: colors.text.white,
+              }}
+            />
+            <Stack.Screen
+              name="Admin"
+              component={AdminScreen}
+              options={{
+                headerShown: true,
+                title: 'Group Admin',
+                headerStyle: {
+                  backgroundColor: colors.primary[600],
+                },
+                headerTintColor: colors.text.white,
+              }}
+            />
+          </>
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}
+

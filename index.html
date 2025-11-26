@@ -1,0 +1,81 @@
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EsusuHub - Team up Cash up Climb up!</title>
+    <meta name="description" content="Join savings groups, build wealth together, and achieve your financial goals with EsusuHub's collaborative savings platform." />
+    <meta name="keywords" content="savings, group savings, esusu, financial goals, money management" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://esusuhub.com/" />
+    <meta property="og:title" content="EsusuHub - Team up Cash up Climb up!" />
+    <meta property="og:description" content="Join savings groups, build wealth together, and achieve your financial goals with EsusuHub's collaborative savings platform." />
+    <meta property="og:image" content="https://static.readdy.ai/image/c8fa67cf25818f8977dc6c7bfc4f6111/6aaef037c8e44e8eb9ec2616da6136a8.png" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://esusuhub.com/" />
+    <meta property="twitter:title" content="EsusuHub - Team up Cash up Climb up!" />
+    <meta property="twitter:description" content="Join savings groups, build wealth together, and achieve your financial goals with EsusuHub's collaborative savings platform." />
+    <meta property="twitter:image" content="https://static.readdy.ai/image/c8fa67cf25818f8977dc6c7bfc4f6111/6aaef037c8e44e8eb9ec2616da6136a8.png" />
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One:wght@400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet" />
+    <script src="https://kit.fontawesome.com/your-kit-id.js" crossorigin="anonymous"></script>
+
+    <!-- Facebook SDK -->
+    <script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
+    
+    <!-- Google Sign-In SDK -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    
+    <!-- Facebook SDK Initialization -->
+    <script>
+      window.fbAsyncInit = function() {
+        FB.init({
+          appId: 'YOUR_FACEBOOK_APP_ID', // Replace with your actual Facebook App ID
+          cookie: true,
+          xfbml: true,
+          version: 'v18.0'
+        });
+      };
+    </script>
+
+    <!-- Google Sign-In Initialization -->
+    <script>
+      window.googleSignInInit = function() {
+        if (window.google) {
+          window.google.accounts.id.initialize({
+            client_id: 'YOUR_GOOGLE_CLIENT_ID', // Replace with your actual Google Client ID
+            callback: window.handleGoogleSignIn,
+            auto_select: false,
+            cancel_on_tap_outside: true
+          });
+        }
+      };
+
+      // Load Google Sign-In when the page loads
+      window.addEventListener('load', function() {
+        if (window.google) {
+          window.googleSignInInit();
+        } else {
+          // Retry after a short delay if Google SDK isn't loaded yet
+          setTimeout(window.googleSignInInit, 1000);
+        }
+      });
+    </script>
+  </body>
+</html>
