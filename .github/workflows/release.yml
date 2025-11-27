@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release-android:
+    name: Release Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+      - run: npm ci
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v2
+      - name: Build Release APK
+        run: |
+          cd android
+          ./gradlew assembleRelease
+      - name: Build Release AAB
+        run: |
+          cd android
+          ./gradlew bundleRelease
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: android-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+      - name: Upload AAB
+        uses: actions/upload-artifact@v3
+        with:
+          name: android-aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
+
+  release-ios:
+    name: Release iOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - run: npm ci
+      - name: Setup CocoaPods
+        run: |
+          cd ios
+          pod install
+      - name: Build iOS Archive
+        run: |
+          xcodebuild -workspace ios/EsusuHub.xcworkspace \
+            -scheme EsusuHub \
+            -configuration Release \
+            archive \
+            -archivePath ${{ runner.temp }}/EsusuHub.xcarchive
+      - name: Export IPA
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath ${{ runner.temp }}/EsusuHub.xcarchive \
+            -exportPath ${{ runner.temp }}/export \
+            -exportOptionsPlist ios/ExportOptions.plist
+      - name: Upload IPA
+        uses: actions/upload-artifact@v3
+        with:
+          name: ios-ipa
+          path: ${{ runner.temp }}/export/*.ipa
+

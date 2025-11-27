@@ -16,9 +16,12 @@ import ProfileScreen from '../screens/profile/ProfileScreen';
 import BankingScreen from '../screens/banking/BankingScreen';
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
 import AdminScreen from '../screens/admin/AdminScreen';
+import LoadingScreen from '../components/LoadingScreen';
 
 import {colors} from '../theme/colors';
-import {SecureStorageService} from '../services/storage/secureStorage';
+import {useAuthStore} from '../stores';
+import {initializeAuth} from '../utils/authHelpers';
+import {deepLinkingService, DeepLinkData} from '../services/deepLinking/deepLinkingService';
 
 export type RootStackParamList = {
   Auth: undefined;
@@ -92,26 +95,94 @@ function MainTabs() {
 
 // Root Navigator
 export default function AppNavigator() {
-  const [isAuthenticated, setIsAuthenticated] = React.useState<boolean | null>(
-    null,
-  );
+  const {isAuthenticated, isLoading} = useAuthStore();
+  const navigationRef = React.useRef<any>(null);
 
   React.useEffect(() => {
-    checkAuthStatus();
-  }, []);
+    initializeAuth();
+    deepLinkingService.initialize();
 
-  const checkAuthStatus = async () => {
-    const loggedIn = await SecureStorageService.isUserLoggedIn();
-    setIsAuthenticated(loggedIn);
+    // Listen for deep links
+    const unsubscribe = deepLinkingService.addListener((data: DeepLinkData) => {
+      handleDeepLink(data);
+    });
+
+    return unsubscribe;
+  }, [isAuthenticated]);
+
+  const handleDeepLink = (data: DeepLinkData) => {
+    if (!navigationRef.current) {
+      return;
+    }
+
+    const navigation = navigationRef.current;
+
+    try {
+      switch (data.screen) {
+        case 'GroupDetail':
+          if (data.params?.groupId) {
+            navigation.navigate('GroupDetail', {groupId: data.params.groupId});
+          }
+          break;
+        case 'CreateGroup':
+          navigation.navigate('CreateGroup');
+          break;
+        case 'Payment':
+          navigation.navigate('Payment', {
+            groupId: data.params?.groupId,
+            groupName: data.params?.groupName,
+            monthlyContribution: data.params?.monthlyContribution,
+          });
+          break;
+        case 'Profile':
+          navigation.navigate('Profile');
+          break;
+        case 'Notifications':
+          navigation.navigate('Notifications');
+          break;
+        case 'Groups':
+          navigation.navigate('Main', {screen: 'Groups'});
+          break;
+        case 'Home':
+          navigation.navigate('Main', {screen: 'Home'});
+          break;
+        default:
+          navigation.navigate('Main', {screen: 'Home'});
+      }
+    } catch (error) {
+      console.error('Error handling deep link navigation', error);
+    }
   };
 
-  if (isAuthenticated === null) {
-    // Show loading screen
-    return null;
+  if (isLoading) {
+    return <LoadingScreen />;
   }
 
+  // Deep linking configuration
+  const linking = {
+    prefixes: ['esusuhub://', 'https://esusuhub.com', 'https://www.esusuhub.com'],
+    config: {
+      screens: {
+        Main: {
+          screens: {
+            Home: 'home',
+            Groups: 'groups',
+            History: 'history',
+          },
+        },
+        GroupDetail: 'group/:groupId',
+        CreateGroup: 'groups/create',
+        Payment: 'payment',
+        Profile: 'profile',
+        Notifications: 'notifications',
+        Login: 'login',
+        Register: 'register',
+      },
+    },
+  };
+
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef} linking={linking}>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,

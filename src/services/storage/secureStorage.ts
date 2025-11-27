@@ -108,6 +108,14 @@ export class SecureStorageService {
     return await this.getSecureItem(STORAGE_KEYS.AUTH_TOKEN);
   }
 
+  static async setRefreshToken(token: string): Promise<void> {
+    await this.setSecureItem(STORAGE_KEYS.REFRESH_TOKEN, token);
+  }
+
+  static async getRefreshToken(): Promise<string | null> {
+    return await this.getSecureItem(STORAGE_KEYS.REFRESH_TOKEN);
+  }
+
   static async setUserSession(userData: {
     id?: string;
     email?: string;

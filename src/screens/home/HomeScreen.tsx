@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useState, useEffect} from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,9 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  RefreshControl,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
@@ -18,39 +21,149 @@ import {colors} from '../../theme/colors';
 import {spacing, borderRadius} from '../../theme/spacing';
 import {typography} from '../../theme/typography';
 import {RootStackParamList} from '../../navigation/AppNavigator';
+import {useAuthStore, useGroupsStore} from '../../stores';
+import {groupsService, paymentsService} from '../../services';
+import {Payment} from '../../types/payment';
 
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
 export default function HomeScreen() {
   const navigation = useNavigation<HomeScreenNavigationProp>();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'history'>('dashboard');
+  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [recentPayments, setRecentPayments] = useState<Payment[]>([]);
 
-  const savings = {
-    totalSaved: 1250000,
-    monthlyContribution: 50000,
-    nextPayout: 'March 15, 2024',
-    groupSize: 12,
-    position: 3,
+  const {user} = useAuthStore();
+  const {groups, setGroups, isLoading: groupsLoading} = useGroupsStore();
+
+  // Calculate savings totals from groups
+  const calculateSavings = () => {
+    if (!groups || groups.length === 0) {
+      return {
+        totalSaved: 0,
+        monthlyContribution: 0,
+        nextPayout: null,
+        groupSize: 0,
+        position: 0,
+      };
+    }
+
+    const totalSaved = groups.reduce((sum, group) => {
+      // Calculate based on monthly contribution and cycle
+      const monthsActive = Math.floor(
+        (new Date().getTime() - new Date(group.startDate).getTime()) /
+          (1000 * 60 * 60 * 24 * 30)
+      );
+      return sum + group.monthlyContribution * Math.min(monthsActive, group.cycleDuration);
+    }, 0);
+
+    const monthlyContribution = groups.reduce(
+      (sum, group) => sum + group.monthlyContribution,
+      0
+    );
+
+    // Find next payout (simplified - would need more logic based on payout schedule)
+    const activeGroups = groups.filter(g => g.status === 'active');
+    const nextPayout = activeGroups.length > 0 ? activeGroups[0].startDate : null;
+
+    return {
+      totalSaved,
+      monthlyContribution,
+      nextPayout,
+      groupSize: groups.reduce((sum, g) => sum + g.currentMembers, 0),
+      position: 0, // Would need to calculate based on user's position in groups
+    };
   };
 
-  const recentActivity = [
-    {
-      id: 1,
-      type: 'contribution',
-      amount: 50000,
-      date: 'Feb 10',
-      member: 'You',
-      group: 'Unity Savings Circle',
-    },
-    {
-      id: 2,
-      type: 'payout',
-      amount: 600000,
-      date: 'Feb 8',
-      member: 'Sarah Johnson',
-      group: 'Unity Savings Circle',
-    },
-  ];
+  const savings = calculateSavings();
+
+  // Format date helper
+  const formatDate = (dateString: string | null): string => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'});
+  };
+
+  // Format date for activity (short format)
+  const formatActivityDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    
+    return date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+  };
+
+  // Load data
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      
+      // Load groups
+      const userGroups = await groupsService.getMyGroups();
+      setGroups(userGroups);
+
+      // Load recent payments
+      const paymentHistory = await paymentsService.getPaymentHistory({
+        page: 1,
+        pageSize: 10,
+      });
+      setRecentPayments(paymentHistory.payments || []);
+    } catch (error: any) {
+      console.error('Error loading home data:', error);
+      Alert.alert(
+        'Error',
+        error?.message || 'Failed to load data. Please try again.'
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Pull to refresh
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  // Show loading state
+  if (loading && !refreshing) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient
+          colors={[colors.primary[600], colors.secondary[600]]}
+          style={styles.header}>
+          <View style={styles.headerContent}>
+            <View style={styles.logoSection}>
+              <Image
+                source={{
+                  uri: 'https://static.readdy.ai/image/c8fa67cf25818f8977dc6c7bfc4f6111/6aaef037c8e44e8eb9ec2616da6136a8.png',
+                }}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+              <View>
+                <Text style={styles.headerTitle}>EsusuHub</Text>
+                <Text style={styles.headerSubtitle}>Team up Cash up Climb up!</Text>
+              </View>
+            </View>
+          </View>
+        </LinearGradient>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary[600]} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -79,18 +192,24 @@ export default function HomeScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => navigation.navigate('Profile' as any)}>
-              <Image
-                source={{
-                  uri: 'https://readdy.ai/api/search-image?query=Professional%20African%20woman%20portrait&width=100&height=100',
-                }}
-                style={styles.avatar}
-              />
+              {user?.avatarUrl ? (
+                <Image source={{uri: user.avatarUrl}} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                  <Icon name="account" size={24} color={colors.text.white} />
+                </View>
+              )}
             </TouchableOpacity>
           </View>
         </View>
       </LinearGradient>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }>
         {activeTab === 'dashboard' && (
           <>
             {/* Balance Card */}
@@ -137,8 +256,19 @@ export default function HomeScreen() {
                   <Text style={styles.payoutDate}>{savings.nextPayout}</Text>
                 </View>
                 <View style={styles.payoutAmount}>
-                  <Text style={styles.payoutValue}>₦600K</Text>
-                  <Text style={styles.payoutSubtext}>Your turn</Text>
+                  {savings.nextPayout && (
+                    <>
+                      <Text style={styles.payoutValue}>
+                        ₦{savings.monthlyContribution.toLocaleString()}
+                      </Text>
+                      <Text style={styles.payoutSubtext}>
+                        {formatDate(savings.nextPayout)}
+                      </Text>
+                    </>
+                  )}
+                  {!savings.nextPayout && (
+                    <Text style={styles.payoutSubtext}>No upcoming payout</Text>
+                  )}
                 </View>
               </View>
             </Card>
@@ -180,51 +310,67 @@ export default function HomeScreen() {
             {/* Recent Activity */}
             <Card style={styles.card}>
               <Text style={styles.sectionTitle}>Recent Activity</Text>
-              {recentActivity.map(activity => (
-                <View key={activity.id} style={styles.activityItem}>
-                  <View
-                    style={[
-                      styles.activityIcon,
-                      {
-                        backgroundColor:
-                          activity.type === 'contribution'
-                            ? colors.primary[100]
-                            : colors.warning + '20',
-                      },
-                    ]}>
-                    <Icon
-                      name={
-                        activity.type === 'contribution'
-                          ? 'arrow-up'
-                          : 'arrow-down'
-                      }
-                      size={20}
-                      color={
-                        activity.type === 'contribution'
-                          ? colors.primary[600]
-                          : colors.warning
-                      }
-                    />
-                  </View>
-                  <View style={styles.activityInfo}>
-                    <Text style={styles.activityMember}>{activity.member}</Text>
-                    <Text style={styles.activityDate}>{activity.date}</Text>
-                  </View>
-                  <Text
-                    style={[
-                      styles.activityAmount,
-                      {
-                        color:
-                          activity.type === 'contribution'
-                            ? colors.primary[600]
-                            : colors.warning,
-                      },
-                    ]}>
-                    {activity.type === 'contribution' ? '+' : '-'}₦
-                    {activity.amount.toLocaleString()}
-                  </Text>
+              {recentPayments.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Icon name="inbox" size={48} color={colors.gray[400]} />
+                  <Text style={styles.emptyStateText}>No recent activity</Text>
                 </View>
-              ))}
+              ) : (
+                recentPayments.map(payment => (
+                  <View key={payment.id} style={styles.activityItem}>
+                    <View
+                      style={[
+                        styles.activityIcon,
+                        {
+                          backgroundColor:
+                            payment.status === 'completed'
+                              ? colors.primary[100]
+                              : payment.status === 'failed'
+                              ? colors.error + '20'
+                              : colors.warning + '20',
+                        },
+                      ]}>
+                      <Icon
+                        name={
+                          payment.status === 'completed'
+                            ? 'check-circle'
+                            : payment.status === 'failed'
+                            ? 'close-circle'
+                            : 'clock-outline'
+                        }
+                        size={20}
+                        color={
+                          payment.status === 'completed'
+                            ? colors.primary[600]
+                            : payment.status === 'failed'
+                            ? colors.error
+                            : colors.warning
+                        }
+                      />
+                    </View>
+                    <View style={styles.activityInfo}>
+                      <Text style={styles.activityMember}>{payment.groupName}</Text>
+                      <Text style={styles.activityDate}>
+                        {formatActivityDate(payment.createdAt)}
+                      </Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.activityAmount,
+                        {
+                          color:
+                            payment.status === 'completed'
+                              ? colors.primary[600]
+                              : payment.status === 'failed'
+                              ? colors.error
+                              : colors.warning,
+                        },
+                      ]}>
+                      ₦{payment.amount.toLocaleString()}
+                    </Text>
+                  </View>
+                ))
+              )}
             </Card>
           </>
         )}
@@ -232,50 +378,70 @@ export default function HomeScreen() {
         {activeTab === 'history' && (
           <Card style={styles.card}>
             <Text style={styles.sectionTitle}>Payment History</Text>
-            {recentActivity.map(activity => (
-              <View key={activity.id} style={styles.activityItem}>
-                <View
-                  style={[
-                    styles.activityIcon,
-                    {
-                      backgroundColor:
-                        activity.type === 'contribution'
-                          ? colors.primary[100]
-                          : colors.warning + '20',
-                    },
-                  ]}>
-                  <Icon
-                    name={
-                      activity.type === 'contribution' ? 'arrow-up' : 'arrow-down'
-                    }
-                    size={20}
-                    color={
-                      activity.type === 'contribution'
-                        ? colors.primary[600]
-                        : colors.warning
-                    }
-                  />
-                </View>
-                <View style={styles.activityInfo}>
-                  <Text style={styles.activityMember}>{activity.member}</Text>
-                  <Text style={styles.activityGroup}>{activity.group}</Text>
-                  <Text style={styles.activityDate}>{activity.date}</Text>
-                </View>
-                <Text
-                  style={[
-                    styles.activityAmount,
-                    {
-                      color:
-                        activity.type === 'contribution'
-                          ? colors.primary[600]
-                          : colors.warning,
-                    },
-                  ]}>
-                  {activity.type === 'contribution' ? '+' : '-'}₦
-                  {activity.amount.toLocaleString()}
-                </Text>
+            {recentPayments.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Icon name="history" size={48} color={colors.gray[400]} />
+                <Text style={styles.emptyStateText}>No payment history</Text>
               </View>
-            ))}
+            ) : (
+              recentPayments.map(payment => (
+                <View key={payment.id} style={styles.activityItem}>
+                  <View
+                    style={[
+                      styles.activityIcon,
+                      {
+                        backgroundColor:
+                          payment.status === 'completed'
+                            ? colors.primary[100]
+                            : payment.status === 'failed'
+                            ? colors.error + '20'
+                            : colors.warning + '20',
+                      },
+                    ]}>
+                    <Icon
+                      name={
+                        payment.status === 'completed'
+                          ? 'check-circle'
+                          : payment.status === 'failed'
+                          ? 'close-circle'
+                          : 'clock-outline'
+                      }
+                      size={20}
+                      color={
+                        payment.status === 'completed'
+                          ? colors.primary[600]
+                          : payment.status === 'failed'
+                          ? colors.error
+                          : colors.warning
+                      }
+                    />
+                  </View>
+                  <View style={styles.activityInfo}>
+                    <Text style={styles.activityMember}>{payment.groupName}</Text>
+                    <Text style={styles.activityGroup}>
+                      {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
+                    </Text>
+                    <Text style={styles.activityDate}>
+                      {formatActivityDate(payment.createdAt)}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.activityAmount,
+                      {
+                        color:
+                          payment.status === 'completed'
+                            ? colors.primary[600]
+                            : payment.status === 'failed'
+                            ? colors.error
+                            : colors.warning,
+                      },
+                    ]}>
+                    ₦{payment.amount.toLocaleString()}
+                  </Text>
+                </View>
+              ))
+            )}
           </Card>
         )}
       </ScrollView>
@@ -467,6 +633,26 @@ const styles = StyleSheet.create({
   activityAmount: {
     fontSize: typography.fontSize.md,
     fontWeight: typography.fontWeight.semibold,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+  },
+  emptyStateText: {
+    fontSize: typography.fontSize.md,
+    color: colors.text.secondary,
+    marginTop: spacing.md,
+  },
+  avatarPlaceholder: {
+    backgroundColor: colors.primary[500],
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

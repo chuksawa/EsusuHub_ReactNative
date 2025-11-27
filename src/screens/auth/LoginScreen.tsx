@@ -22,6 +22,8 @@ import {typography} from '../../theme/typography';
 import {SecureStorageService} from '../../services/storage/secureStorage';
 import {RootStackParamList} from '../../navigation/AppNavigator';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import {authService} from '../../services';
+import {useAuthStore} from '../../stores';
 
 type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -40,20 +42,29 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      // Simulate login - replace with actual API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Call real API
+      const response = await authService.login({email, password});
 
-      // Store user session
+      // Store tokens securely
+      await SecureStorageService.setAuthToken(response.token);
+      await SecureStorageService.setRefreshToken(response.refreshToken);
       await SecureStorageService.setUserSession({
-        email,
-        name: email.split('@')[0],
-        token: 'mock_token_' + Date.now(),
+        id: response.user.id,
+        email: response.user.email,
+        name: `${response.user.firstName} ${response.user.lastName}`,
+        token: response.token,
       });
+
+      // Update auth store
+      const {setAuth} = useAuthStore.getState();
+      setAuth(response.user, response.token, response.refreshToken);
 
       // Navigate to main app
       navigation.replace('Main');
-    } catch (error) {
-      Alert.alert('Error', 'Login failed. Please try again.');
+    } catch (error: any) {
+      const errorMessage =
+        error?.message || 'Login failed. Please check your credentials and try again.';
+      Alert.alert('Login Error', errorMessage);
     } finally {
       setLoading(false);
     }

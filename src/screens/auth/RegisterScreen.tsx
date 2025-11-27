@@ -22,6 +22,8 @@ import {typography} from '../../theme/typography';
 import {SecureStorageService} from '../../services/storage/secureStorage';
 import {RootStackParamList} from '../../navigation/AppNavigator';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import {authService} from '../../services';
+import {useAuthStore} from '../../stores';
 
 type RegisterScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
@@ -72,17 +74,44 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      await SecureStorageService.setUserSession({
+      // Call real API
+      const response = await authService.register({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
         email: formData.email,
-        name: `${formData.firstName} ${formData.lastName}`,
-        token: 'mock_token_' + Date.now(),
+        phone: formData.phone,
+        password: formData.password,
       });
 
-      navigation.replace('Main');
-    } catch (error) {
-      Alert.alert('Error', 'Registration failed. Please try again.');
+      // Store tokens securely
+      await SecureStorageService.setAuthToken(response.token);
+      await SecureStorageService.setRefreshToken(response.refreshToken);
+      await SecureStorageService.setUserSession({
+        id: response.user.id,
+        email: response.user.email,
+        name: `${response.user.firstName} ${response.user.lastName}`,
+        token: response.token,
+      });
+
+      // Update auth store
+      const {setAuth} = useAuthStore.getState();
+      setAuth(response.user, response.token, response.refreshToken);
+
+      // Show success message and navigate
+      Alert.alert(
+        'Registration Successful',
+        'Your account has been created. Please check your email to verify your account.',
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.replace('Main'),
+          },
+        ]
+      );
+    } catch (error: any) {
+      const errorMessage =
+        error?.message || 'Registration failed. Please try again.';
+      Alert.alert('Registration Error', errorMessage);
     } finally {
       setLoading(false);
     }
