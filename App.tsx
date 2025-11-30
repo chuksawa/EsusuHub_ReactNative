@@ -17,11 +17,22 @@ import {pushNotificationService} from './src/services/notifications/pushNotifica
 
 const App: React.FC = () => {
   React.useEffect(() => {
-    // Initialize offline service
-    offlineService.initialize();
-    
-    // Initialize push notifications
-    pushNotificationService.initialize();
+    // Initialize services asynchronously to prevent blocking app registration
+    (async () => {
+      try {
+        // Initialize offline service
+        await offlineService.initialize();
+      } catch (error) {
+        console.warn('Failed to initialize offline service:', error);
+      }
+      
+      try {
+        // Initialize push notifications
+        await pushNotificationService.initialize();
+      } catch (error) {
+        console.warn('Failed to initialize push notifications:', error);
+      }
+    })();
   }, []);
 
   return (

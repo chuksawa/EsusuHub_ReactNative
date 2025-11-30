@@ -41,8 +41,57 @@ class GroupsService {
    * Get user's groups
    */
   async getMyGroups(): Promise<Group[]> {
-    const response = await apiClient.get<Group[]>('/groups/my-groups');
-    return response.data;
+    try {
+      const response = await apiClient.get<Group[]>('/groups/my-groups');
+      return response.data;
+    } catch (error: any) {
+      // In development mode, return mock data if API fails
+      if (__DEV__ && (error.code === 'NETWORK_ERROR' || error.status === 0)) {
+        console.warn('API unavailable, using mock data for development');
+        return this.getMockGroups();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get mock groups for development
+   */
+  private getMockGroups(): Group[] {
+    return [
+      {
+        id: 'group-1',
+        name: 'Family Savings',
+        description: 'Monthly family contribution group',
+        monthlyContribution: 50000,
+        currency: 'NGN',
+        maxMembers: 12,
+        currentMembers: 8,
+        cycleDuration: 12,
+        startDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+        status: 'active',
+        adminId: 'dev-user-123',
+        adminName: 'Dev User',
+        createdAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'group-2',
+        name: 'Vacation Fund',
+        description: 'Saving for summer vacation',
+        monthlyContribution: 30000,
+        currency: 'NGN',
+        maxMembers: 10,
+        currentMembers: 6,
+        cycleDuration: 6,
+        startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        status: 'active',
+        adminId: 'dev-user-123',
+        adminName: 'Dev User',
+        createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ];
   }
 
   /**

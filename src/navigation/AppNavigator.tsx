@@ -99,6 +99,7 @@ export default function AppNavigator() {
   const navigationRef = React.useRef<any>(null);
 
   React.useEffect(() => {
+    // Only initialize auth once on mount, not when isAuthenticated changes
     initializeAuth();
     deepLinkingService.initialize();
 
@@ -108,7 +109,7 @@ export default function AppNavigator() {
     });
 
     return unsubscribe;
-  }, [isAuthenticated]);
+  }, []); // Empty dependency array - only run once
 
   const handleDeepLink = (data: DeepLinkData) => {
     if (!navigationRef.current) {

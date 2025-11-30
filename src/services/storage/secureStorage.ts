@@ -20,7 +20,9 @@ export class SecureStorageService {
    */
   static async setSecureItem(key: string, value: string): Promise<void> {
     try {
-      await SecureKeyStore.set(key, value);
+      // Pass null for options to satisfy native method signature
+      // Native method expects: set(String alias, String input, @Nullable ReadableMap options, Promise promise)
+      await SecureKeyStore.set(key, value, null);
     } catch (error) {
       console.error(`Error storing secure item ${key}:`, error);
       throw error;
@@ -34,7 +36,19 @@ export class SecureStorageService {
     try {
       const value = await SecureKeyStore.get(key);
       return value;
-    } catch (error) {
+    } catch (error: any) {
+      // Check if error is "item not found" (expected when item doesn't exist)
+      const isNotFoundError = error?.code === 404 || 
+                              error?.message?.includes('has not been set') ||
+                              error?.message?.includes('not found');
+      
+      if (isNotFoundError) {
+        // This is expected behavior - item doesn't exist yet (e.g., first launch)
+        // Don't log as error, just return null
+        return null;
+      }
+      
+      // For other errors, log them
       console.error(`Error retrieving secure item ${key}:`, error);
       return null;
     }

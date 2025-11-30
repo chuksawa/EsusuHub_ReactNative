@@ -76,7 +76,20 @@ export default function HomeScreen() {
     };
   };
 
-  const savings = calculateSavings();
+  const savings = React.useMemo(() => {
+    try {
+      return calculateSavings();
+    } catch (error) {
+      console.error('HomeScreen: Error calculating savings:', error);
+      return {
+        totalSaved: 0,
+        monthlyContribution: 0,
+        nextPayout: null,
+        groupSize: 0,
+        position: 0,
+      };
+    }
+  }, [groups]);
 
   // Format date helper
   const formatDate = (dateString: string | null): string => {
@@ -102,26 +115,41 @@ export default function HomeScreen() {
   const loadData = async () => {
     try {
       setLoading(true);
+      console.log('HomeScreen: Starting to load data...');
       
       // Load groups
+      console.log('HomeScreen: Loading groups...');
       const userGroups = await groupsService.getMyGroups();
-      setGroups(userGroups);
+      console.log('HomeScreen: Groups loaded:', userGroups?.length || 0);
+      setGroups(userGroups || []);
 
       // Load recent payments
+      console.log('HomeScreen: Loading payments...');
       const paymentHistory = await paymentsService.getPaymentHistory({
         page: 1,
         pageSize: 10,
       });
-      setRecentPayments(paymentHistory.payments || []);
+      console.log('HomeScreen: Payments loaded:', paymentHistory?.payments?.length || 0);
+      setRecentPayments(paymentHistory?.payments || []);
+      
+      console.log('HomeScreen: Data loading completed successfully');
     } catch (error: any) {
-      console.error('Error loading home data:', error);
-      Alert.alert(
-        'Error',
-        error?.message || 'Failed to load data. Please try again.'
-      );
+      console.error('HomeScreen: Error loading home data:', error);
+      // Only show alert if not a network error in dev mode (services handle mock data)
+      if (!__DEV__ || (error.code !== 'NETWORK_ERROR' && error.status !== 0)) {
+        Alert.alert(
+          'Error',
+          error?.message || 'Failed to load data. Please try again.'
+        );
+      }
+      // Set empty arrays on error so UI doesn't break
+      setGroups([]);
+      setRecentPayments([]);
     } finally {
+      console.log('HomeScreen: Setting loading to false');
       setLoading(false);
       setRefreshing(false);
+      console.log('HomeScreen: State update called');
     }
   };
 
@@ -134,9 +162,32 @@ export default function HomeScreen() {
   useEffect(() => {
     loadData();
   }, []);
+  
+  // Separate effect for timeout - use ref to avoid stale closure
+  useEffect(() => {
+    if (!loading) return;
+    
+    // Safety timeout - ensure loading state doesn't get stuck
+    const timeout = setTimeout(() => {
+      console.warn('HomeScreen: Loading timeout - forcing loading to false');
+      setLoading(false);
+      setRefreshing(false);
+    }, 5000); // 5 second timeout
+    
+    return () => clearTimeout(timeout);
+  }, [loading]);
 
   // Show loading state
-  if (loading && !refreshing) {
+  console.log('HomeScreen: Render - loading:', loading, 'refreshing:', refreshing, 'groups:', groups.length);
+  
+  // Force re-render check
+  React.useEffect(() => {
+    console.log('HomeScreen: useEffect triggered - loading:', loading);
+  }, [loading]);
+  
+  // Always show content after initial load - don't block on loading state
+  if (loading && !refreshing && groups.length === 0 && recentPayments.length === 0) {
+    console.log('HomeScreen: Rendering loading state');
     return (
       <View style={styles.container}>
         <LinearGradient
@@ -160,6 +211,31 @@ export default function HomeScreen() {
         </LinearGradient>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary[600]} />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  console.log('HomeScreen: Rendering main content. Loading:', loading, 'Groups:', groups.length, 'Payments:', recentPayments.length);
+
+  // Temporary: Simple render to test if component works
+  if (__DEV__ && loading === false && groups.length === 0 && recentPayments.length === 0) {
+    console.log('HomeScreen: Rendering test view');
+    return (
+      <View style={styles.container}>
+        <LinearGradient
+          colors={[colors.primary[600], colors.secondary[600]]}
+          style={styles.header}>
+          <View style={styles.headerContent}>
+            <Text style={styles.headerTitle}>EsusuHub</Text>
+          </View>
+        </LinearGradient>
+        <View style={styles.content}>
+          <Text>Home Screen Loaded Successfully!</Text>
+          <Text>Groups: {groups.length}</Text>
+          <Text>Payments: {recentPayments.length}</Text>
+          <Button title="Test Button" onPress={() => console.log('Button pressed')} />
         </View>
       </View>
     );
@@ -253,7 +329,9 @@ export default function HomeScreen() {
                 </View>
                 <View style={styles.payoutInfo}>
                   <Text style={styles.payoutLabel}>Next Payout</Text>
-                  <Text style={styles.payoutDate}>{savings.nextPayout}</Text>
+                  <Text style={styles.payoutDate}>
+                    {savings.nextPayout ? formatDate(savings.nextPayout) : 'N/A'}
+                  </Text>
                 </View>
                 <View style={styles.payoutAmount}>
                   {savings.nextPayout && (
@@ -638,6 +716,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: spacing.xl,
+  },
+  loadingText: {
+    marginTop: spacing.md,
+    fontSize: typography.fontSize.md,
+    color: colors.text.secondary,
   },
   emptyState: {
     alignItems: 'center',

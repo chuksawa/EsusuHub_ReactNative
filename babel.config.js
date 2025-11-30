@@ -18,7 +18,7 @@ module.exports = {
         },
       },
     ],
-    'react-native-reanimated/plugin',
+    // 'react-native-reanimated/plugin', // Commented out - not compatible with RN 0.73
   ],
 };
 

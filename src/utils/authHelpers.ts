@@ -38,7 +38,13 @@ export async function logoutUser(): Promise<void> {
  * Initialize auth state from storage
  */
 export async function initializeAuth(): Promise<void> {
-  const {setLoading, setAuth, logout} = useAuthStore.getState();
+  const {setLoading, setAuth, logout, isAuthenticated} = useAuthStore.getState();
+  
+  // Don't re-initialize if already authenticated (prevents loops)
+  if (isAuthenticated) {
+    return;
+  }
+  
   setLoading(true);
 
   try {
@@ -49,23 +55,58 @@ export async function initializeAuth(): Promise<void> {
     const userName = await SecureStorageService.getItem('userName');
 
     if (token && refreshToken && userId) {
+      // In dev mode, if token starts with "dev_token", skip API validation
+      if (__DEV__ && token.startsWith('dev_token')) {
+        // Use stored user data or create mock user
+        const mockUser = {
+          id: userId,
+          email: userEmail || 'dev@esusuhub.com',
+          firstName: userName?.split(' ')[0] || 'Dev',
+          lastName: userName?.split(' ')[1] || 'User',
+          phone: '+1234567890',
+          avatarUrl: undefined,
+          emailVerified: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        setAuth(mockUser, token, refreshToken);
+        return;
+      }
+      
       // Try to validate token by fetching user
       try {
         const {authService} = await import('../services');
         const user = await authService.getCurrentUser();
         setAuth(user, token, refreshToken);
       } catch (error) {
-        // Token might be expired - try refresh
-        const {refreshAccessToken} = await import('./tokenManager');
-        const newToken = await refreshAccessToken();
-        if (newToken) {
-          const {authService} = await import('../services');
-          const user = await authService.getCurrentUser();
-          setAuth(user, newToken, refreshToken);
+        // In dev mode, if API fails, use stored data instead of logging out
+        if (__DEV__) {
+          console.warn('API unavailable in dev mode, using stored auth data');
+          const mockUser = {
+            id: userId,
+            email: userEmail || 'dev@esusuhub.com',
+            firstName: userName?.split(' ')[0] || 'Dev',
+            lastName: userName?.split(' ')[1] || 'User',
+            phone: '+1234567890',
+            avatarUrl: undefined,
+            emailVerified: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          setAuth(mockUser, token, refreshToken);
         } else {
-          // Refresh failed - clear auth
-          await SecureStorageService.clearUserSession();
-          logout();
+          // Token might be expired - try refresh
+          const {refreshAccessToken} = await import('./tokenManager');
+          const newToken = await refreshAccessToken();
+          if (newToken) {
+            const {authService} = await import('../services');
+            const user = await authService.getCurrentUser();
+            setAuth(user, newToken, refreshToken);
+          } else {
+            // Refresh failed - clear auth
+            await SecureStorageService.clearUserSession();
+            logout();
+          }
         }
       }
     } else {
@@ -73,7 +114,12 @@ export async function initializeAuth(): Promise<void> {
     }
   } catch (error) {
     console.error('Auth initialization error:', error);
-    logout();
+    // In dev mode, don't logout on error - might be network issue
+    if (!__DEV__) {
+      logout();
+    } else {
+      setLoading(false);
+    }
   } finally {
     setLoading(false);
   }

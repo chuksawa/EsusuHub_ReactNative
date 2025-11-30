@@ -70,6 +70,49 @@ export default function LoginScreen() {
     }
   };
 
+  // Development bypass - only in __DEV__ mode
+  const handleDevLogin = async () => {
+    setLoading(true);
+    try {
+      // Create mock user data for development
+      const mockUser = {
+        id: 'dev-user-123',
+        email: 'dev@esusuhub.com',
+        firstName: 'Dev',
+        lastName: 'User',
+        phone: '+1234567890',
+        avatarUrl: undefined,
+        emailVerified: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const mockToken = `dev_token_${Date.now()}`;
+      const mockRefreshToken = `dev_refresh_${Date.now()}`;
+
+      // Store tokens securely
+      await SecureStorageService.setAuthToken(mockToken);
+      await SecureStorageService.setRefreshToken(mockRefreshToken);
+      await SecureStorageService.setUserSession({
+        id: mockUser.id,
+        email: mockUser.email,
+        name: `${mockUser.firstName} ${mockUser.lastName}`,
+        token: mockToken,
+      });
+
+      // Update auth store
+      const {setAuth} = useAuthStore.getState();
+      setAuth(mockUser, mockToken, mockRefreshToken);
+
+      // Navigate to main app
+      navigation.replace('Main');
+    } catch (error: any) {
+      Alert.alert('Dev Login Error', error?.message || 'Failed to login');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -134,6 +177,22 @@ export default function LoginScreen() {
               loading={loading}
               style={styles.loginButton}
             />
+
+            {/* Development Bypass - Only in __DEV__ mode */}
+            {__DEV__ && (
+              <>
+                <Button
+                  title="🚀 Dev Login (Skip Auth)"
+                  onPress={handleDevLogin}
+                  loading={loading}
+                  variant="outline"
+                  style={[styles.loginButton, styles.devButton]}
+                />
+                <Text style={styles.devHint}>
+                  Development mode: Use this to bypass authentication
+                </Text>
+              </>
+            )}
 
             {/* Divider */}
             <View style={styles.divider}>
@@ -268,6 +327,19 @@ const styles = StyleSheet.create({
   registerLink: {
     color: colors.primary[600],
     fontWeight: typography.fontWeight.medium,
+  },
+  devButton: {
+    marginTop: spacing.sm,
+    borderColor: colors.warning,
+    borderWidth: 2,
+  },
+  devHint: {
+    fontSize: typography.fontSize.xs,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
   },
 });
 

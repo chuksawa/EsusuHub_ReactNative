@@ -3,11 +3,22 @@
  * Uses react-native-config for environment variables
  */
 
-import Config from 'react-native-config';
+let Config: any = null;
+
+try {
+  Config = require('react-native-config').default || require('react-native-config');
+} catch (error) {
+  // react-native-config not available or not properly linked
+  console.warn('react-native-config not available, using defaults');
+}
 
 const getEnvVar = (key: string, defaultValue?: string): string => {
-  // @ts-ignore - react-native-config types may not be available
-  return Config[key] || defaultValue || '';
+  try {
+    // @ts-ignore - react-native-config types may not be available
+    return (Config && Config[key]) || defaultValue || '';
+  } catch (error) {
+    return defaultValue || '';
+  }
 };
 
 export const config = {

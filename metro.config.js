@@ -29,13 +29,6 @@ const config = {
     assetExts: assetExts.filter(ext => ext !== 'svg'),
     sourceExts: [...sourceExts, 'svg'],
   },
-  serializer: {
-    // Optimize bundle output
-    createModuleIdFactory: () => {
-      let nextId = 0;
-      return () => nextId++;
-    },
-  },
 };
 
 module.exports = mergeConfig(defaultConfig, config);
