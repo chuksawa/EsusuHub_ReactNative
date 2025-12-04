@@ -25,7 +25,8 @@ class PushNotificationService {
       // Request permissions
       const hasPermission = await this.requestPermissions();
       if (!hasPermission) {
-        logger.warn('Push notification permissions not granted');
+        // Permissions not granted - this is expected and fine
+        // Push notifications are optional, app will work without them
         return;
       }
 

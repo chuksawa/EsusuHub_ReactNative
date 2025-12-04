@@ -45,9 +45,9 @@ class GroupsService {
       const response = await apiClient.get<Group[]>('/groups/my-groups');
       return response.data;
     } catch (error: any) {
-      // In development mode, return mock data if API fails
-      if (__DEV__ && (error.code === 'NETWORK_ERROR' || error.status === 0)) {
-        console.warn('API unavailable, using mock data for development');
+      // In development mode, return mock data if API fails (network error, timeout, or unavailable)
+      if (__DEV__ && (error.code === 'NETWORK_ERROR' || error.code === 'TIMEOUT_ERROR' || error.status === 0)) {
+        // Silently use mock data - no need to warn, this is expected in dev
         return this.getMockGroups();
       }
       throw error;

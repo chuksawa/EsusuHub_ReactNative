@@ -11,6 +11,10 @@ import {useAuthStore} from '../stores';
  */
 export async function logoutUser(): Promise<void> {
   try {
+    // Clear auth store first (immediate UI update)
+    const {logout} = useAuthStore.getState();
+    logout();
+
     // Call logout API (fire and forget - don't block on error)
     try {
       const {authService} = await import('../services');
@@ -20,17 +24,68 @@ export async function logoutUser(): Promise<void> {
       // Continue with local logout even if API call fails
     }
 
-    // Clear secure storage
+    // Clear secure storage (all auth-related data)
     await SecureStorageService.clearUserSession();
-
-    // Clear auth store
-    const {logout} = useAuthStore.getState();
-    logout();
+    
+    // Also clear AsyncStorage completely in dev mode to ensure clean logout
+    if (__DEV__) {
+      try {
+        const AsyncStorage = await import('@react-native-async-storage/async-storage');
+        // Only clear auth-related keys, not everything
+        await Promise.all([
+          AsyncStorage.default.removeItem('userLoggedIn'),
+          AsyncStorage.default.removeItem('userId'),
+          AsyncStorage.default.removeItem('userEmail'),
+          AsyncStorage.default.removeItem('userName'),
+          AsyncStorage.default.removeItem('userUsername'),
+        ]);
+      } catch (error) {
+        console.warn('Error clearing AsyncStorage:', error);
+      }
+    }
   } catch (error) {
     console.error('Error during logout:', error);
     // Force logout even if there's an error
     const {logout} = useAuthStore.getState();
     logout();
+    // Try to clear storage anyway
+    try {
+      await SecureStorageService.clearUserSession();
+    } catch (clearError) {
+      console.error('Error clearing storage:', clearError);
+    }
+  }
+}
+
+/**
+ * Force clear all auth data (useful for dev/debugging)
+ */
+export async function forceLogout(): Promise<void> {
+  try {
+    // Clear auth store
+    const {logout} = useAuthStore.getState();
+    logout();
+    
+    // Clear all storage
+    await SecureStorageService.clearUserSession();
+    
+    // Clear AsyncStorage auth keys
+    try {
+      const AsyncStorage = await import('@react-native-async-storage/async-storage');
+      await Promise.all([
+        AsyncStorage.default.removeItem('userLoggedIn'),
+        AsyncStorage.default.removeItem('userId'),
+        AsyncStorage.default.removeItem('userEmail'),
+        AsyncStorage.default.removeItem('userName'),
+        AsyncStorage.default.removeItem('userUsername'),
+      ]);
+    } catch (error) {
+      console.warn('Error clearing AsyncStorage:', error);
+    }
+    
+    console.log('✅ Force logout completed - all auth data cleared');
+  } catch (error) {
+    console.error('Error during force logout:', error);
   }
 }
 

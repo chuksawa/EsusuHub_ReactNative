@@ -15,6 +15,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import Card from '../../components/Card';
 import Button from '../../components/Button';
+import Avatar from '../../components/Avatar';
 import {colors} from '../../theme/colors';
 import {spacing} from '../../theme/spacing';
 import {typography} from '../../theme/typography';
@@ -119,7 +120,13 @@ export default function ProfileScreen() {
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
-            await logoutUser();
+            try {
+              await logoutUser();
+              // Navigation will update automatically via AppNavigator's isAuthenticated check
+            } catch (error) {
+              console.error('Logout error:', error);
+              Alert.alert('Error', 'Failed to logout. Please try again.');
+            }
           },
         },
       ]
@@ -156,13 +163,11 @@ export default function ProfileScreen() {
         {/* Profile Header */}
         <Card style={styles.headerCard}>
           <View style={styles.avatarContainer}>
-            {profile?.avatarUrl ? (
-              <Image source={{uri: profile.avatarUrl}} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Icon name="account" size={48} color={colors.text.white} />
-              </View>
-            )}
+            <Avatar
+              uri={profile?.avatarUrl}
+              name={profile ? `${profile.firstName} ${profile.lastName}` : undefined}
+              size={100}
+            />
             <TouchableOpacity
               style={styles.avatarEditButton}
               onPress={handleAvatarUpload}

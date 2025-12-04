@@ -44,7 +44,7 @@ This command will:
 # Terminal 1: Start Metro
 npm start
 
-# Terminal 2: Build and run
+# Terminal 2: Build and runnp
 npm run android
 ```
 

@@ -135,21 +135,46 @@ class ApiClient {
 
     try {
       const headers = await this.getHeaders();
-      let response = await fetch(`${this.baseUrl}${endpoint}`, {
-        method: 'GET',
-        headers,
-      });
+      
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      let response: Response;
+      try {
+        response = await fetch(`${this.baseUrl}${endpoint}`, {
+          method: 'GET',
+          headers,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       // Handle 401 with token refresh
       if (response.status === 401 && retry) {
-        const newToken = await refreshAccessToken();
-        if (newToken) {
-          // Retry with new token
-          const newHeaders = await this.getHeaders();
-          response = await fetch(`${this.baseUrl}${endpoint}`, {
-            method: 'GET',
-            headers: newHeaders,
-          });
+        try {
+          const newToken = await refreshAccessToken();
+          if (newToken) {
+            // Retry with new token
+            const retryController = new AbortController();
+            const retryTimeoutId = setTimeout(() => retryController.abort(), 10000);
+            try {
+              const newHeaders = await this.getHeaders();
+              response = await fetch(`${this.baseUrl}${endpoint}`, {
+                method: 'GET',
+                headers: newHeaders,
+                signal: retryController.signal,
+              });
+            } finally {
+              clearTimeout(retryTimeoutId);
+            }
+          }
+        } catch (refreshError) {
+          // If token refresh fails, continue with original response
+          if (__DEV__) {
+            logger.warn('Token refresh failed:', refreshError);
+          }
         }
       }
 
@@ -157,18 +182,38 @@ class ApiClient {
 
       // Cache successful responses
       if (useCache && response.ok) {
-        await cacheService.set(cacheKey, result, 5 * 60 * 1000); // 5 minutes
+        try {
+          await cacheService.set(cacheKey, result, 5 * 60 * 1000); // 5 minutes
+        } catch (cacheError) {
+          // Silently fail caching - don't break the request
+          if (__DEV__) {
+            logger.warn('Cache set failed:', cacheError);
+          }
+        }
       }
 
       return result;
     } catch (error: any) {
       // Return cached data on error if available
       if (useCache) {
-        const cached = await cacheService.get<ApiResponse<T>>(cacheKey);
-        if (cached) {
-          logger.info(`Using cached data after error for ${endpoint}`);
-          return cached;
+        try {
+          const cached = await cacheService.get<ApiResponse<T>>(cacheKey);
+          if (cached) {
+            logger.info(`Using cached data after error for ${endpoint}`);
+            return cached;
+          }
+        } catch (cacheError) {
+          // Silently fail cache retrieval
         }
+      }
+
+      // Handle abort/timeout errors
+      if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+        throw {
+          message: 'Request timeout - please try again',
+          status: 0,
+          code: 'TIMEOUT_ERROR',
+        } as ApiError;
       }
 
       if (error.status && error.message) {
@@ -209,23 +254,48 @@ class ApiClient {
 
     try {
       const headers = await this.getHeaders();
-      let response = await fetch(`${this.baseUrl}${endpoint}`, {
-        method: 'POST',
-        headers,
-        body: data ? JSON.stringify(data) : undefined,
-      });
+      
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      
+      let response: Response;
+      try {
+        response = await fetch(`${this.baseUrl}${endpoint}`, {
+          method: 'POST',
+          headers,
+          body: data ? JSON.stringify(data) : undefined,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       // Handle 401 with token refresh (except for auth endpoints)
       if (response.status === 401 && retry && !endpoint.includes('/auth/')) {
-        const newToken = await refreshAccessToken();
-        if (newToken) {
-          // Retry with new token
-          const newHeaders = await this.getHeaders();
-          response = await fetch(`${this.baseUrl}${endpoint}`, {
-            method: 'POST',
-            headers: newHeaders,
-            body: data ? JSON.stringify(data) : undefined,
-          });
+        try {
+          const newToken = await refreshAccessToken();
+          if (newToken) {
+            // Retry with new token
+            const retryController = new AbortController();
+            const retryTimeoutId = setTimeout(() => retryController.abort(), 15000);
+            try {
+              const newHeaders = await this.getHeaders();
+              response = await fetch(`${this.baseUrl}${endpoint}`, {
+                method: 'POST',
+                headers: newHeaders,
+                body: data ? JSON.stringify(data) : undefined,
+                signal: retryController.signal,
+              });
+            } finally {
+              clearTimeout(retryTimeoutId);
+            }
+          }
+        } catch (refreshError) {
+          // If token refresh fails, continue with original response
+          if (__DEV__) {
+            logger.warn('Token refresh failed:', refreshError);
+          }
         }
       }
 
@@ -236,6 +306,15 @@ class ApiClient {
       
       return result;
     } catch (error: any) {
+      // Handle timeout/abort errors
+      if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+        throw {
+          message: 'Request timeout - server may be unreachable. Please check if backend is running.',
+          status: 0,
+          code: 'TIMEOUT_ERROR',
+        } as ApiError;
+      }
+      
       // Queue for retry if retryable and offline
       if (!isConnected && errorHandler.isRetryable(error) && !endpoint.includes('/auth/')) {
         await offlineService.queueAction('POST', endpoint, data);
@@ -244,8 +323,13 @@ class ApiClient {
       if (error.status && error.message) {
         throw error;
       }
+      
+      // Provide more helpful error message
+      const errorMsg = error.message || 'Network error occurred';
       throw {
-        message: error.message || 'Network error occurred',
+        message: errorMsg.includes('Failed to fetch') || errorMsg.includes('Network request failed')
+          ? 'Cannot connect to server. Make sure the backend is running on port 5166.'
+          : errorMsg,
         status: 0,
         code: 'NETWORK_ERROR',
       } as ApiError;

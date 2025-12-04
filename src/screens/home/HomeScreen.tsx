@@ -17,6 +17,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import Card from '../../components/Card';
 import Button from '../../components/Button';
+import Logo from '../../components/Logo';
+import Avatar from '../../components/Avatar';
 import {colors} from '../../theme/colors';
 import {spacing, borderRadius} from '../../theme/spacing';
 import {typography} from '../../theme/typography';
@@ -115,41 +117,30 @@ export default function HomeScreen() {
   const loadData = async () => {
     try {
       setLoading(true);
-      console.log('HomeScreen: Starting to load data...');
       
-      // Load groups
-      console.log('HomeScreen: Loading groups...');
+      // Load groups - services handle timeouts and return mock data in dev mode
       const userGroups = await groupsService.getMyGroups();
-      console.log('HomeScreen: Groups loaded:', userGroups?.length || 0);
       setGroups(userGroups || []);
 
-      // Load recent payments
-      console.log('HomeScreen: Loading payments...');
+      // Load recent payments - services handle timeouts and return mock data in dev mode
       const paymentHistory = await paymentsService.getPaymentHistory({
         page: 1,
         pageSize: 10,
       });
-      console.log('HomeScreen: Payments loaded:', paymentHistory?.payments?.length || 0);
       setRecentPayments(paymentHistory?.payments || []);
-      
-      console.log('HomeScreen: Data loading completed successfully');
     } catch (error: any) {
-      console.error('HomeScreen: Error loading home data:', error);
-      // Only show alert if not a network error in dev mode (services handle mock data)
-      if (!__DEV__ || (error.code !== 'NETWORK_ERROR' && error.status !== 0)) {
-        Alert.alert(
-          'Error',
-          error?.message || 'Failed to load data. Please try again.'
-        );
-      }
-      // Set empty arrays on error so UI doesn't break
+      // Services should return mock data in dev mode, but if they don't, set empty arrays
+      // This prevents the app from crashing
       setGroups([]);
       setRecentPayments([]);
+      
+      // Only log unexpected errors in dev mode
+      if (__DEV__) {
+        console.debug('HomeScreen: Error loading data:', error?.message || error);
+      }
     } finally {
-      console.log('HomeScreen: Setting loading to false');
       setLoading(false);
       setRefreshing(false);
-      console.log('HomeScreen: State update called');
     }
   };
 
@@ -177,17 +168,8 @@ export default function HomeScreen() {
     return () => clearTimeout(timeout);
   }, [loading]);
 
-  // Show loading state
-  console.log('HomeScreen: Render - loading:', loading, 'refreshing:', refreshing, 'groups:', groups.length);
-  
-  // Force re-render check
-  React.useEffect(() => {
-    console.log('HomeScreen: useEffect triggered - loading:', loading);
-  }, [loading]);
-  
-  // Always show content after initial load - don't block on loading state
+  // Show loading state only briefly
   if (loading && !refreshing && groups.length === 0 && recentPayments.length === 0) {
-    console.log('HomeScreen: Rendering loading state');
     return (
       <View style={styles.container}>
         <LinearGradient
@@ -195,13 +177,7 @@ export default function HomeScreen() {
           style={styles.header}>
           <View style={styles.headerContent}>
             <View style={styles.logoSection}>
-              <Image
-                source={{
-                  uri: 'https://static.readdy.ai/image/c8fa67cf25818f8977dc6c7bfc4f6111/6aaef037c8e44e8eb9ec2616da6136a8.png',
-                }}
-                style={styles.logo}
-                resizeMode="contain"
-              />
+              <Logo size={48} />
               <View>
                 <Text style={styles.headerTitle}>EsusuHub</Text>
                 <Text style={styles.headerSubtitle}>Team up Cash up Climb up!</Text>
@@ -217,30 +193,6 @@ export default function HomeScreen() {
     );
   }
 
-  console.log('HomeScreen: Rendering main content. Loading:', loading, 'Groups:', groups.length, 'Payments:', recentPayments.length);
-
-  // Temporary: Simple render to test if component works
-  if (__DEV__ && loading === false && groups.length === 0 && recentPayments.length === 0) {
-    console.log('HomeScreen: Rendering test view');
-    return (
-      <View style={styles.container}>
-        <LinearGradient
-          colors={[colors.primary[600], colors.secondary[600]]}
-          style={styles.header}>
-          <View style={styles.headerContent}>
-            <Text style={styles.headerTitle}>EsusuHub</Text>
-          </View>
-        </LinearGradient>
-        <View style={styles.content}>
-          <Text>Home Screen Loaded Successfully!</Text>
-          <Text>Groups: {groups.length}</Text>
-          <Text>Payments: {recentPayments.length}</Text>
-          <Button title="Test Button" onPress={() => console.log('Button pressed')} />
-        </View>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -249,32 +201,48 @@ export default function HomeScreen() {
         style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.logoSection}>
-            <Image
-              source={{
-                uri: 'https://static.readdy.ai/image/c8fa67cf25818f8977dc6c7bfc4f6111/6aaef037c8e44e8eb9ec2616da6136a8.png',
-              }}
-              style={styles.logo}
-              resizeMode="contain"
-            />
+            <Logo size={48} />
             <View>
               <Text style={styles.headerTitle}>EsusuHub</Text>
               <Text style={styles.headerSubtitle}>Team up Cash up Climb up!</Text>
             </View>
           </View>
           <View style={styles.headerActions}>
+            {/* Force Logout Button - Dev Mode Only */}
+            {__DEV__ && (
+              <TouchableOpacity
+                onPress={async () => {
+                  Alert.alert(
+                    'Force Logout',
+                    'Clear all auth data and logout?',
+                    [
+                      {text: 'Cancel', style: 'cancel'},
+                      {
+                        text: 'Logout',
+                        style: 'destructive',
+                        onPress: async () => {
+                          const {forceLogout} = await import('../../utils/authHelpers');
+                          await forceLogout();
+                        },
+                      },
+                    ]
+                  );
+                }}
+                style={styles.forceLogoutButton}>
+                <Icon name="logout" size={20} color={colors.error} />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               onPress={() => navigation.navigate('Notifications' as any)}>
               <Icon name="bell-outline" size={24} color={colors.text.white} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => navigation.navigate('Profile' as any)}>
-              {user?.avatarUrl ? (
-                <Image source={{uri: user.avatarUrl}} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                  <Icon name="account" size={24} color={colors.text.white} />
-                </View>
-              )}
+              <Avatar
+                uri={user?.avatarUrl}
+                name={user ? `${user.firstName} ${user.lastName}` : undefined}
+                size={40}
+              />
             </TouchableOpacity>
           </View>
         </View>
@@ -565,6 +533,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+  },
+  forceLogoutButton: {
+    padding: spacing.xs,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.background.light,
   },
   avatar: {
     width: 40,

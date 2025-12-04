@@ -17,6 +17,31 @@ import {pushNotificationService} from './src/services/notifications/pushNotifica
 
 const App: React.FC = () => {
   React.useEffect(() => {
+    // Global error handler to prevent crashes
+    const errorHandler = (error: Error, isFatal?: boolean) => {
+      // Log error but don't crash the app
+      if (__DEV__) {
+        console.error('Global error handler:', error, 'isFatal:', isFatal);
+      }
+      // In production, you might want to log to a service like Sentry
+    };
+
+    // Set up global error handlers using ErrorUtils (React Native)
+    if (typeof ErrorUtils !== 'undefined') {
+      const originalHandler = ErrorUtils.getGlobalHandler();
+      ErrorUtils.setGlobalHandler((error: Error, isFatal?: boolean) => {
+        errorHandler(error, isFatal);
+        // Still call original handler but don't let it crash
+        try {
+          if (originalHandler) {
+            originalHandler(error, isFatal);
+          }
+        } catch (e) {
+          // Silently catch any errors from original handler
+        }
+      });
+    }
+
     // Initialize services asynchronously to prevent blocking app registration
     (async () => {
       try {
@@ -33,6 +58,11 @@ const App: React.FC = () => {
         console.warn('Failed to initialize push notifications:', error);
       }
     })();
+
+    // Cleanup
+    return () => {
+      // Restore original handlers if needed
+    };
   }, []);
 
   return (

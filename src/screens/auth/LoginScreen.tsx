@@ -16,6 +16,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 import Card from '../../components/Card';
+import Logo from '../../components/Logo';
 import {colors} from '../../theme/colors';
 import {spacing, borderRadius} from '../../theme/spacing';
 import {typography} from '../../theme/typography';
@@ -45,19 +46,46 @@ export default function LoginScreen() {
       // Call real API
       const response = await authService.login({email, password});
 
+      // Handle backend response format (accessToken vs token, fullName vs firstName/lastName)
+      const token = (response as any).accessToken || response.token;
+      const refreshToken = (response as any).refreshToken || response.refreshToken;
+      const user = response.user || response;
+      
+      // Parse fullName into firstName and lastName if needed
+      let firstName = user.firstName || '';
+      let lastName = user.lastName || '';
+      if (!firstName && !lastName && user.fullName) {
+        const nameParts = user.fullName.split(' ');
+        firstName = nameParts[0] || '';
+        lastName = nameParts.slice(1).join(' ') || '';
+      }
+
+      // Create normalized user object
+      const normalizedUser = {
+        id: user.id,
+        email: user.email,
+        firstName,
+        lastName,
+        phone: user.phone,
+        avatarUrl: user.avatarUrl || user.avatar_url,
+        emailVerified: user.emailVerified || user.isVerified || false,
+        createdAt: user.createdAt || user.created_at,
+        updatedAt: user.updatedAt || user.updated_at,
+      };
+
       // Store tokens securely
-      await SecureStorageService.setAuthToken(response.token);
-      await SecureStorageService.setRefreshToken(response.refreshToken);
+      await SecureStorageService.setAuthToken(token);
+      await SecureStorageService.setRefreshToken(refreshToken);
       await SecureStorageService.setUserSession({
-        id: response.user.id,
-        email: response.user.email,
-        name: `${response.user.firstName} ${response.user.lastName}`,
-        token: response.token,
+        id: normalizedUser.id,
+        email: normalizedUser.email,
+        name: `${normalizedUser.firstName} ${normalizedUser.lastName}`.trim() || normalizedUser.email,
+        token,
       });
 
       // Update auth store
       const {setAuth} = useAuthStore.getState();
-      setAuth(response.user, response.token, response.refreshToken);
+      setAuth(normalizedUser as any, token, refreshToken);
 
       // Navigate to main app
       navigation.replace('Main');
@@ -126,13 +154,7 @@ export default function LoginScreen() {
           {/* Logo and Header */}
           <View style={styles.header}>
             <View style={styles.logoContainer}>
-              <Image
-                source={{
-                  uri: 'https://static.readdy.ai/image/c8fa67cf25818f8977dc6c7bfc4f6111/6aaef037c8e44e8eb9ec2616da6136a8.png',
-                }}
-                style={styles.logo}
-                resizeMode="contain"
-              />
+              <Logo size={80} />
             </View>
             <Text style={styles.title}>EsusuHub</Text>
             <Text style={styles.subtitle}>Team up Cash up Climb up!</Text>
@@ -188,8 +210,18 @@ export default function LoginScreen() {
                   variant="outline"
                   style={[styles.loginButton, styles.devButton]}
                 />
+                <Button
+                  title="🗑️ Force Logout (Clear All)"
+                  onPress={async () => {
+                    const {forceLogout} = await import('../../utils/authHelpers');
+                    await forceLogout();
+                    Alert.alert('Success', 'All auth data cleared. Please reload the app.');
+                  }}
+                  variant="outline"
+                  style={[styles.loginButton, {backgroundColor: colors.error, borderColor: colors.error}]}
+                />
                 <Text style={styles.devHint}>
-                  Development mode: Use this to bypass authentication
+                  Development mode: Use Dev Login to bypass auth, or Force Logout to clear everything
                 </Text>
               </>
             )}

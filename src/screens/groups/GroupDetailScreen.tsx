@@ -15,6 +15,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import Card from '../../components/Card';
 import Button from '../../components/Button';
+import Avatar from '../../components/Avatar';
 import {colors} from '../../theme/colors';
 import {spacing, borderRadius} from '../../theme/spacing';
 import {typography} from '../../theme/typography';
@@ -330,11 +331,11 @@ export default function GroupDetailScreen() {
               currentGroupMembers.map(member => (
                 <View key={member.id} style={styles.memberItem}>
                   <View style={styles.memberAvatar}>
-                    {member.avatarUrl ? (
-                      <Icon name="account-circle" size={40} color={colors.primary[600]} />
-                    ) : (
-                      <Icon name="account-circle" size={40} color={colors.gray[400]} />
-                    )}
+                    <Avatar
+                      uri={member.avatarUrl}
+                      name={member.userName}
+                      size={40}
+                    />
                   </View>
                   <View style={styles.memberInfo}>
                     <Text style={styles.memberName}>{member.userName}</Text>

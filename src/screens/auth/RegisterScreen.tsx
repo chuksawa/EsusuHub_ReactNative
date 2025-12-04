@@ -16,6 +16,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 import Card from '../../components/Card';
+import Logo from '../../components/Logo';
 import {colors} from '../../theme/colors';
 import {spacing} from '../../theme/spacing';
 import {typography} from '../../theme/typography';
@@ -74,28 +75,55 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      // Call real API
+      // Call real API - backend expects fullName, not firstName/lastName
+      const fullName = `${formData.firstName} ${formData.lastName}`.trim();
       const response = await authService.register({
-        firstName: formData.firstName,
-        lastName: formData.lastName,
+        fullName,
         email: formData.email,
         phone: formData.phone,
         password: formData.password,
-      });
+      } as any);
+
+      // Handle backend response format
+      const token = (response as any).accessToken || (response as any).token;
+      const refreshToken = (response as any).refreshToken;
+      const user = (response as any).user || response;
+      
+      // Parse fullName into firstName and lastName
+      let firstName = user.firstName || formData.firstName;
+      let lastName = user.lastName || formData.lastName;
+      if (!firstName && !lastName && user.fullName) {
+        const nameParts = user.fullName.split(' ');
+        firstName = nameParts[0] || '';
+        lastName = nameParts.slice(1).join(' ') || '';
+      }
+
+      // Create normalized user object
+      const normalizedUser = {
+        id: user.id,
+        email: user.email,
+        firstName,
+        lastName,
+        phone: user.phone,
+        avatarUrl: user.avatarUrl || user.avatar_url,
+        emailVerified: user.emailVerified || user.isVerified || false,
+        createdAt: user.createdAt || user.created_at,
+        updatedAt: user.updatedAt || user.updated_at,
+      };
 
       // Store tokens securely
-      await SecureStorageService.setAuthToken(response.token);
-      await SecureStorageService.setRefreshToken(response.refreshToken);
+      await SecureStorageService.setAuthToken(token);
+      await SecureStorageService.setRefreshToken(refreshToken);
       await SecureStorageService.setUserSession({
-        id: response.user.id,
-        email: response.user.email,
-        name: `${response.user.firstName} ${response.user.lastName}`,
-        token: response.token,
+        id: normalizedUser.id,
+        email: normalizedUser.email,
+        name: `${normalizedUser.firstName} ${normalizedUser.lastName}`.trim() || normalizedUser.email,
+        token,
       });
 
       // Update auth store
       const {setAuth} = useAuthStore.getState();
-      setAuth(response.user, response.token, response.refreshToken);
+      setAuth(normalizedUser as any, token, refreshToken);
 
       // Show success message and navigate
       Alert.alert(
@@ -109,9 +137,20 @@ export default function RegisterScreen() {
         ]
       );
     } catch (error: any) {
-      const errorMessage =
-        error?.message || 'Registration failed. Please try again.';
+      let errorMessage = 'Registration failed. Please try again.';
+      
+      // Provide more helpful error messages
+      if (error?.code === 'NETWORK_ERROR' || error?.status === 0) {
+        errorMessage = 'Cannot connect to server. Please check:\n\n' +
+          '• Backend server is running (port 5166)\n' +
+          '• You are connected to the internet\n' +
+          '• For Android emulator, server should be accessible at 10.0.2.2:5166';
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
       Alert.alert('Registration Error', errorMessage);
+      console.error('Registration error:', error);
     } finally {
       setLoading(false);
     }
@@ -129,13 +168,7 @@ export default function RegisterScreen() {
           showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <View style={styles.logoContainer}>
-              <Image
-                source={{
-                  uri: 'https://static.readdy.ai/image/c8fa67cf25818f8977dc6c7bfc4f6111/6aaef037c8e44e8eb9ec2616da6136a8.png',
-                }}
-                style={styles.logo}
-                resizeMode="contain"
-              />
+              <Logo size={80} />
             </View>
             <Text style={styles.title}>EsusuHub</Text>
             <Text style={styles.subtitle}>Create Your Account</Text>

@@ -9,7 +9,11 @@ try {
   Config = require('react-native-config').default || require('react-native-config');
 } catch (error) {
   // react-native-config not available or not properly linked
-  console.warn('react-native-config not available, using defaults');
+  // This is expected - we'll use default values instead
+  // Only log in dev mode for debugging
+  if (__DEV__) {
+    console.debug('react-native-config not available, using default configuration');
+  }
 }
 
 const getEnvVar = (key: string, defaultValue?: string): string => {
@@ -23,8 +27,10 @@ const getEnvVar = (key: string, defaultValue?: string): string => {
 
 export const config = {
   // API Configuration
+  // For Android emulator, use 10.0.2.2 instead of localhost
+  // For physical device, use your computer's IP address (e.g., http://192.168.1.100:5166/api)
   API_BASE_URL: getEnvVar('API_BASE_URL', __DEV__ 
-    ? 'http://localhost:5166/api' 
+    ? 'http://10.0.2.2:5166/api'  // Android emulator uses 10.0.2.2 to access host machine
     : 'https://api.esusuhub.com/api'),
   
   // Supabase Configuration
