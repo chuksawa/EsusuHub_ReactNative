@@ -264,7 +264,7 @@ export default function HomeScreen() {
               onPress={() => navigation.navigate('Profile' as any)}>
               <Avatar
                 uri={user?.avatarUrl}
-                name={user ? `${user.firstName} ${user.lastName}` : undefined}
+                name={user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email : undefined}
                 size={40}
               />
             </TouchableOpacity>

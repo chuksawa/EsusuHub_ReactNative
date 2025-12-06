@@ -7,6 +7,7 @@ import React from 'react';
 import {View, Image, StyleSheet, ViewStyle, ImageStyle, Text} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {colors} from '../theme/colors';
+import config from '../config/env';
 
 interface AvatarProps {
   uri?: string;
@@ -15,8 +16,22 @@ interface AvatarProps {
   style?: ViewStyle | ImageStyle;
 }
 
+// Helper to convert relative URLs to full URLs
+const getFullUrl = (url?: string): string | undefined => {
+  if (!url) return undefined;
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url; // Already a full URL
+  }
+  // Convert relative path to full URL
+  const baseUrl = config.API_BASE_URL.replace('/api', ''); // Remove /api to get base server URL
+  return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+};
+
 export default function Avatar({uri, name, size = 40, style}: AvatarProps) {
   const [imageError, setImageError] = React.useState(false);
+  
+  // Convert relative URL to full URL if needed
+  const fullUri = React.useMemo(() => getFullUrl(uri), [uri]);
 
   // Get initials from name
   const getInitials = (nameStr?: string): string => {
@@ -34,18 +49,21 @@ export default function Avatar({uri, name, size = 40, style}: AvatarProps) {
   const initials = getInitials(name);
 
   // Use image if available and no error
-  if (uri && !imageError) {
+  if (fullUri && !imageError && fullUri.trim() !== '') {
     return (
       <Image
-        source={{uri}}
+        source={{uri: fullUri}}
         style={[{width: size, height: size, borderRadius: size / 2}, style]}
         resizeMode="cover"
-        onError={() => setImageError(true)}
+        onError={() => {
+          console.warn('Avatar image failed to load:', fullUri);
+          setImageError(true);
+        }}
       />
     );
   }
 
-  // Fallback to initials or icon
+  // Fallback to initials or icon - always render something
   return (
     <View
       style={[
@@ -56,6 +74,7 @@ export default function Avatar({uri, name, size = 40, style}: AvatarProps) {
           backgroundColor: colors.primary[500],
           justifyContent: 'center',
           alignItems: 'center',
+          overflow: 'hidden', // Ensure content stays within bounds
         },
         style,
       ]}>
@@ -65,11 +84,17 @@ export default function Avatar({uri, name, size = 40, style}: AvatarProps) {
             color: colors.text.white,
             fontSize: size * 0.4,
             fontWeight: 'bold',
+            textAlign: 'center',
           }}>
           {initials}
         </Text>
       ) : (
-        <Icon name="account-circle" size={size * 0.8} color={colors.text.white} />
+        <Icon 
+          name="account-circle" 
+          size={size * 0.8} 
+          color={colors.text.white}
+          style={{opacity: 1}} // Ensure icon is visible
+        />
       )}
     </View>
   );

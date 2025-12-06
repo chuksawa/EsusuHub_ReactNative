@@ -80,13 +80,21 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
     // Extract additional data from metadata JSONB if available
     const metadata = user.metadata || {};
     
+    // Convert relative avatar URL to full URL if needed
+    let avatarUrl = metadata.avatar_url || null;
+    if (avatarUrl && !avatarUrl.startsWith('http')) {
+      const protocol = req.protocol || 'http';
+      const host = req.get('host') || `localhost:${process.env.PORT || 5166}`;
+      avatarUrl = `${protocol}://${host}${avatarUrl.startsWith('/') ? '' : '/'}${avatarUrl}`;
+    }
+    
     res.json({
       id: user.id,
       email: user.email,
       phone: user.phone || '',
       fullName: user.full_name || '',
       handle: metadata.handle || '',
-      avatarUrl: metadata.avatar_url || null,
+      avatarUrl: avatarUrl,
       isVerified: !!user.email_confirmed_at,
       bvn: metadata.bvn || null,
       nin: metadata.nin || null,
@@ -299,21 +307,55 @@ router.post(
   upload.single('file'),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
+      console.log('📸 [UPLOAD_AVATAR] Request received from user:', req.userId);
+      
       if (!req.file) {
+        console.log('❌ [UPLOAD_AVATAR] No file uploaded');
         res.status(400).json({ message: 'No file uploaded', code: 'NO_FILE' });
         return;
       }
 
-      const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+      console.log('✅ [UPLOAD_AVATAR] File received:', req.file.filename, req.file.size, 'bytes');
 
-      await pool.query('UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2', [
-        avatarUrl,
-        req.userId,
-      ]);
+      // Get the base URL for the server
+      const protocol = req.protocol || 'http';
+      const host = req.get('host') || `localhost:${process.env.PORT || 5166}`;
+      const baseUrl = `${protocol}://${host}`;
+      
+      // Return full URL so React Native can fetch it
+      const avatarUrl = `${baseUrl}/uploads/avatars/${req.file.filename}`;
+      
+      console.log('📸 [UPLOAD_AVATAR] Avatar URL:', avatarUrl);
+
+      // Get current user metadata
+      const currentUser = await pool.query(
+        'SELECT metadata FROM public.users WHERE id = $1',
+        [req.userId]
+      );
+      const currentMetadata = currentUser.rows[0]?.metadata || {};
+
+      // Update metadata with avatar_url
+      const updatedMetadata = {
+        ...currentMetadata,
+        avatar_url: avatarUrl,
+      };
+
+      // Update user metadata in public.users table
+      await pool.query(
+        'UPDATE public.users SET metadata = $1, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(updatedMetadata), req.userId]
+      );
+
+      console.log('✅ [UPLOAD_AVATAR] Avatar URL saved:', avatarUrl);
 
       res.json({ avatarUrl });
     } catch (error: any) {
-      res.status(500).json({ message: 'Failed to upload avatar', code: 'UPLOAD_ERROR' });
+      console.error('❌ [UPLOAD_AVATAR] Error:', error.message);
+      res.status(500).json({ 
+        message: 'Failed to upload avatar', 
+        code: 'UPLOAD_ERROR',
+        ...(process.env.NODE_ENV === 'development' && { details: error.message })
+      });
     }
   }
 );

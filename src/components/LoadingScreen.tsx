@@ -6,11 +6,18 @@
 import React from 'react';
 import {View, ActivityIndicator, StyleSheet} from 'react-native';
 import {colors} from '../theme/colors';
+import {spacing} from '../theme/spacing';
+import Logo from './Logo';
 
 export default function LoadingScreen() {
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color={colors.primary[600]} />
+      <Logo size={80} />
+      <ActivityIndicator 
+        size="large" 
+        color={colors.primary[600]} 
+        style={styles.loader}
+      />
     </View>
   );
 }
@@ -21,6 +28,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.background.light,
+  },
+  loader: {
+    marginTop: spacing.lg,
   },
 });
 
