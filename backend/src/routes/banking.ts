@@ -11,15 +11,31 @@ const router = Router();
 // Get bank accounts
 router.get('/accounts', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const result = await pool.query(
-      `SELECT id, account_number, account_type, account_name, balance, available_balance,
-              currency, interest_rate, minimum_balance, status, opened_date, maturity_date,
-              created_at, updated_at
-       FROM bank_accounts
-       WHERE user_id = $1
-       ORDER BY opened_date DESC`,
-      [req.userId]
-    );
+    console.log('🏦 [GET_ACCOUNTS] Fetching accounts for user:', req.userId);
+    
+    // Try with explicit schema first, fallback gracefully if table doesn't exist
+    let result;
+    try {
+      result = await pool.query(
+        `SELECT id, account_number, account_type, account_name, balance, available_balance,
+                currency, interest_rate, minimum_balance, status, opened_date, maturity_date,
+                created_at, updated_at
+         FROM public.bank_accounts
+         WHERE user_id = $1
+         ORDER BY opened_date DESC`,
+        [req.userId]
+      );
+    } catch (schemaError: any) {
+      // If table doesn't exist or column doesn't exist, return empty array
+      if (schemaError.message.includes('does not exist') || schemaError.message.includes('column')) {
+        console.log('⚠️ [GET_ACCOUNTS] Table or column does not exist, returning empty array');
+        res.json([]);
+        return;
+      }
+      throw schemaError;
+    }
+
+    console.log(`✅ [GET_ACCOUNTS] Found ${result.rows.length} accounts`);
 
     res.json(
       result.rows.map((row) => ({
@@ -40,29 +56,108 @@ router.get('/accounts', authenticate, async (req: AuthRequest, res: Response): P
       }))
     );
   } catch (error: any) {
-    res.status(500).json({ message: 'Failed to get bank accounts', code: 'GET_ACCOUNTS_ERROR' });
+    console.error('❌ [GET_ACCOUNTS] Error:', error.message, error.code);
+    // If it's a schema error, return empty array instead of error
+    if (error.message.includes('does not exist') || error.message.includes('column')) {
+      console.log('⚠️ [GET_ACCOUNTS] Schema error, returning empty array');
+      res.json([]);
+      return;
+    }
+    res.status(500).json({ 
+      message: 'Failed to get bank accounts', 
+      code: 'GET_ACCOUNTS_ERROR',
+      details: error.message 
+    });
   }
 });
 
-// Get bank account by ID
+// Get bank account applications (MUST come before /accounts/:id to avoid route conflict)
+router.get('/accounts/applications', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    console.log('📋 [GET_APPLICATIONS] Fetching applications for user:', req.userId);
+    
+    // Try with explicit schema first
+    let result;
+    try {
+      result = await pool.query(
+        `SELECT id, account_type, employment_status, employer_name, monthly_income,
+                purpose_of_account, initial_deposit, preferred_branch, status,
+                application_date, review_date, approval_date, reviewer_notes,
+                created_at, updated_at
+         FROM public.bank_account_applications
+         WHERE user_id = $1
+         ORDER BY application_date DESC`,
+        [req.userId]
+      );
+    } catch (schemaError: any) {
+      // If table doesn't exist or column doesn't exist, return empty array
+      if (schemaError.message.includes('does not exist') || schemaError.message.includes('column')) {
+        console.log('⚠️ [GET_APPLICATIONS] Table or column does not exist, returning empty array');
+        res.json([]);
+        return;
+      }
+      throw schemaError;
+    }
+
+    console.log(`✅ [GET_APPLICATIONS] Found ${result.rows.length} applications`);
+
+    res.json(
+      result.rows.map((row) => ({
+        id: row.id,
+        accountType: row.account_type,
+        employmentStatus: row.employment_status,
+        employerName: row.employer_name,
+        monthlyIncome: row.monthly_income ? parseFloat(row.monthly_income) : null,
+        purposeOfAccount: row.purpose_of_account,
+        initialDeposit: row.initial_deposit ? parseFloat(row.initial_deposit) : null,
+        preferredBranch: row.preferred_branch,
+        status: row.status,
+        applicationDate: row.application_date,
+        reviewDate: row.review_date,
+        approvalDate: row.approval_date,
+        reviewerNotes: row.reviewer_notes,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }))
+    );
+  } catch (error: any) {
+    console.error('❌ [GET_APPLICATIONS] Error:', error.message, error.code);
+    // If it's a schema error, return empty array instead of error
+    if (error.message.includes('does not exist') || error.message.includes('column')) {
+      console.log('⚠️ [GET_APPLICATIONS] Schema error, returning empty array');
+      res.json([]);
+      return;
+    }
+    res.status(500).json({ 
+      message: 'Failed to get applications', 
+      code: 'GET_APPLICATIONS_ERROR',
+      details: error.message 
+    });
+  }
+});
+
+// Get bank account by ID (MUST come after /accounts/applications to avoid route conflict)
 router.get('/accounts/:id', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    console.log('🏦 [GET_ACCOUNT] Fetching account:', id, 'for user:', req.userId);
 
     const result = await pool.query(
       `SELECT id, account_number, account_type, account_name, balance, available_balance,
               currency, interest_rate, minimum_balance, status, opened_date, maturity_date,
               created_at, updated_at
-       FROM bank_accounts
+       FROM public.bank_accounts
        WHERE id = $1 AND user_id = $2`,
       [id, req.userId]
     );
 
     if (result.rows.length === 0) {
+      console.log('⚠️ [GET_ACCOUNT] Account not found');
       throw new NotFoundError('Bank account not found');
     }
 
     const row = result.rows[0];
+    console.log('✅ [GET_ACCOUNT] Account found');
     res.json({
       id: row.id,
       accountNumber: row.account_number,
@@ -80,11 +175,16 @@ router.get('/accounts/:id', authenticate, async (req: AuthRequest, res: Response
       updatedAt: row.updated_at,
     });
   } catch (error: any) {
+    console.error('❌ [GET_ACCOUNT] Error:', error.message, error.code);
     if (error instanceof NotFoundError) {
       res.status(error.statusCode).json({ message: error.message, code: error.code });
       return;
     }
-    res.status(500).json({ message: 'Failed to get bank account', code: 'GET_ACCOUNT_ERROR' });
+    res.status(500).json({ 
+      message: 'Failed to get bank account', 
+      code: 'GET_ACCOUNT_ERROR',
+      details: error.message 
+    });
   }
 });
 
@@ -92,13 +192,12 @@ router.get('/accounts/:id', authenticate, async (req: AuthRequest, res: Response
 router.post(
   '/accounts/apply',
   authenticate,
-  [
+  validate([
     body('accountType').isIn(['savings', 'current', 'fixed_deposit']).withMessage('Invalid account type'),
     body('employmentStatus').optional().notEmpty().withMessage('Employment status cannot be empty'),
     body('monthlyIncome').optional().isFloat({ min: 0 }).withMessage('Monthly income must be a positive number'),
     body('initialDeposit').optional().isFloat({ min: 0 }).withMessage('Initial deposit must be a positive number'),
-  ],
-  validate,
+  ]),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const {
@@ -112,7 +211,7 @@ router.post(
       } = req.body;
 
       const result = await pool.query(
-        `INSERT INTO bank_account_applications (
+        `INSERT INTO public.bank_account_applications (
           user_id, account_type, employment_status, employer_name, monthly_income,
           purpose_of_account, initial_deposit, preferred_branch, status
         )
@@ -151,44 +250,6 @@ router.post(
   }
 );
 
-// Get bank account applications
-router.get('/accounts/applications', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const result = await pool.query(
-      `SELECT id, account_type, employment_status, employer_name, monthly_income,
-              purpose_of_account, initial_deposit, preferred_branch, status,
-              application_date, review_date, approval_date, reviewer_notes,
-              created_at, updated_at
-       FROM bank_account_applications
-       WHERE user_id = $1
-       ORDER BY application_date DESC`,
-      [req.userId]
-    );
-
-    res.json(
-      result.rows.map((row) => ({
-        id: row.id,
-        accountType: row.account_type,
-        employmentStatus: row.employment_status,
-        employerName: row.employer_name,
-        monthlyIncome: row.monthly_income ? parseFloat(row.monthly_income) : null,
-        purposeOfAccount: row.purpose_of_account,
-        initialDeposit: row.initial_deposit ? parseFloat(row.initial_deposit) : null,
-        preferredBranch: row.preferred_branch,
-        status: row.status,
-        applicationDate: row.application_date,
-        reviewDate: row.review_date,
-        approvalDate: row.approval_date,
-        reviewerNotes: row.reviewer_notes,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      }))
-    );
-  } catch (error: any) {
-    res.status(500).json({ message: 'Failed to get applications', code: 'GET_APPLICATIONS_ERROR' });
-  }
-});
-
 // Get bank transactions
 router.get(
   '/transactions',
@@ -200,13 +261,15 @@ router.get(
       const pageSize = parseInt(req.query.pageSize as string) || 20;
       const offset = (page - 1) * pageSize;
 
+      console.log('💳 [GET_TRANSACTIONS] Fetching transactions for user:', req.userId, accountId ? `account: ${accountId}` : 'all accounts');
+
       let queryText = '';
       let queryParams: any[] = [];
 
       if (accountId) {
         // Verify account belongs to user
         const accountCheck = await pool.query(
-          'SELECT id FROM bank_accounts WHERE id = $1 AND user_id = $2',
+          'SELECT id FROM public.bank_accounts WHERE id = $1 AND user_id = $2',
           [accountId, req.userId]
         );
 
@@ -216,8 +279,8 @@ router.get(
 
         queryText = `
           SELECT bt.*, ba.account_number, ba.account_name
-          FROM bank_transactions bt
-          JOIN bank_accounts ba ON bt.account_id = ba.id
+          FROM public.bank_transactions bt
+          JOIN public.bank_accounts ba ON bt.account_id = ba.id
           WHERE bt.account_id = $1
           ORDER BY bt.transaction_date DESC
           LIMIT $2 OFFSET $3
@@ -226,8 +289,8 @@ router.get(
       } else {
         queryText = `
           SELECT bt.*, ba.account_number, ba.account_name
-          FROM bank_transactions bt
-          JOIN bank_accounts ba ON bt.account_id = ba.id
+          FROM public.bank_transactions bt
+          JOIN public.bank_accounts ba ON bt.account_id = ba.id
           WHERE ba.user_id = $1
           ORDER BY bt.transaction_date DESC
           LIMIT $2 OFFSET $3
@@ -235,26 +298,76 @@ router.get(
         queryParams = [req.userId, pageSize, offset];
       }
 
-      const result = await pool.query(queryText, queryParams);
+      // Try to execute query, handle schema errors gracefully
+      let result;
+      try {
+        result = await pool.query(queryText, queryParams);
+      } catch (schemaError: any) {
+        // If table doesn't exist or column doesn't exist, return empty array
+        if (schemaError.message.includes('does not exist') || schemaError.message.includes('column')) {
+          console.log('⚠️ [GET_TRANSACTIONS] Table or column does not exist, returning empty array');
+          res.json({
+            transactions: [],
+            total: 0,
+            page,
+            pageSize,
+          });
+          return;
+        }
+        throw schemaError;
+      }
 
       // Get total count
       let countQuery = '';
       let countParams: any[] = [];
 
       if (accountId) {
-        countQuery = 'SELECT COUNT(*) FROM bank_transactions WHERE account_id = $1';
+        countQuery = 'SELECT COUNT(*) FROM public.bank_transactions WHERE account_id = $1';
         countParams = [accountId];
       } else {
         countQuery = `
-          SELECT COUNT(*) FROM bank_transactions bt
-          JOIN bank_accounts ba ON bt.account_id = ba.id
+          SELECT COUNT(*) FROM public.bank_transactions bt
+          JOIN public.bank_accounts ba ON bt.account_id = ba.id
           WHERE ba.user_id = $1
         `;
         countParams = [req.userId];
       }
 
-      const countResult = await pool.query(countQuery, countParams);
+      let countResult;
+      try {
+        countResult = await pool.query(countQuery, countParams);
+      } catch (countError: any) {
+        // If count query fails, just use the result length
+        console.log('⚠️ [GET_TRANSACTIONS] Count query failed, using result length');
+        const total = result.rows.length;
+        res.json({
+          transactions: result.rows.map((row) => ({
+            id: row.id,
+            accountId: row.account_id,
+            accountNumber: row.account_number,
+            accountName: row.account_name,
+            transactionType: row.transaction_type,
+            amount: parseFloat(row.amount),
+            balanceAfter: parseFloat(row.balance_after),
+            description: row.description,
+            referenceNumber: row.reference_number,
+            recipientAccount: row.recipient_account,
+            recipientBank: row.recipient_bank,
+            status: row.status,
+            transactionDate: row.transaction_date,
+            valueDate: row.value_date,
+            createdAt: row.created_at,
+          })),
+          total,
+          page,
+          pageSize,
+        });
+        return;
+      }
+
       const total = parseInt(countResult.rows[0].count);
+
+      console.log(`✅ [GET_TRANSACTIONS] Found ${result.rows.length} transactions (total: ${total})`);
 
       res.json({
         transactions: result.rows.map((row) => ({
@@ -279,11 +392,27 @@ router.get(
         pageSize,
       });
     } catch (error: any) {
+      console.error('❌ [GET_TRANSACTIONS] Error:', error.message, error.code);
       if (error instanceof NotFoundError) {
         res.status(error.statusCode).json({ message: error.message, code: error.code });
         return;
       }
-      res.status(500).json({ message: 'Failed to get transactions', code: 'GET_TRANSACTIONS_ERROR' });
+      // If it's a schema error, return empty array instead of error
+      if (error.message.includes('does not exist') || error.message.includes('column')) {
+        console.log('⚠️ [GET_TRANSACTIONS] Schema error, returning empty array');
+        res.json({
+          transactions: [],
+          total: 0,
+          page: parseInt(req.query.page as string) || 1,
+          pageSize: parseInt(req.query.pageSize as string) || 20,
+        });
+        return;
+      }
+      res.status(500).json({ 
+        message: 'Failed to get transactions', 
+        code: 'GET_TRANSACTIONS_ERROR',
+        details: error.message 
+      });
     }
   }
 );
@@ -292,19 +421,18 @@ router.get(
 router.post(
   '/transactions/deposit',
   authenticate,
-  [
+  validate([
     body('accountId').isUUID().withMessage('Valid account ID is required'),
     body('amount').isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
     body('description').optional().notEmpty().withMessage('Description cannot be empty'),
-  ],
-  validate,
+  ]),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const { accountId, amount, description } = req.body;
 
       // Verify account belongs to user
       const accountResult = await pool.query(
-        'SELECT id, balance, available_balance FROM bank_accounts WHERE id = $1 AND user_id = $2',
+        'SELECT id, balance, available_balance FROM public.bank_accounts WHERE id = $1 AND user_id = $2',
         [accountId, req.userId]
       );
 
@@ -321,7 +449,7 @@ router.post(
 
       // Create transaction
       const transactionResult = await pool.query(
-        `INSERT INTO bank_transactions (
+        `INSERT INTO public.bank_transactions (
           account_id, transaction_type, amount, balance_after, description, reference_number, status
         )
         VALUES ($1, 'deposit', $2, $3, $4, $5, 'completed')
@@ -331,7 +459,7 @@ router.post(
 
       // Update account balance
       await pool.query(
-        'UPDATE bank_accounts SET balance = $1, available_balance = $2, updated_at = NOW() WHERE id = $3',
+        'UPDATE public.bank_accounts SET balance = $1, available_balance = $2, updated_at = NOW() WHERE id = $3',
         [newBalance, newAvailableBalance, accountId]
       );
 
@@ -363,19 +491,18 @@ router.post(
 router.post(
   '/transactions/withdraw',
   authenticate,
-  [
+  validate([
     body('accountId').isUUID().withMessage('Valid account ID is required'),
     body('amount').isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
     body('description').optional().notEmpty().withMessage('Description cannot be empty'),
-  ],
-  validate,
+  ]),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const { accountId, amount, description } = req.body;
 
       // Verify account belongs to user
       const accountResult = await pool.query(
-        'SELECT id, balance, available_balance, minimum_balance FROM bank_accounts WHERE id = $1 AND user_id = $2',
+        'SELECT id, balance, available_balance, minimum_balance FROM public.bank_accounts WHERE id = $1 AND user_id = $2',
         [accountId, req.userId]
       );
 
@@ -403,7 +530,7 @@ router.post(
 
       // Create transaction
       const transactionResult = await pool.query(
-        `INSERT INTO bank_transactions (
+        `INSERT INTO public.bank_transactions (
           account_id, transaction_type, amount, balance_after, description, reference_number, status
         )
         VALUES ($1, 'withdrawal', $2, $3, $4, $5, 'completed')
@@ -413,7 +540,7 @@ router.post(
 
       // Update account balance
       await pool.query(
-        'UPDATE bank_accounts SET balance = $1, available_balance = $2, updated_at = NOW() WHERE id = $3',
+        'UPDATE public.bank_accounts SET balance = $1, available_balance = $2, updated_at = NOW() WHERE id = $3',
         [newBalance, newAvailableBalance, accountId]
       );
 

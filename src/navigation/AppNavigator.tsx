@@ -9,6 +9,7 @@ import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
 import HomeScreen from '../screens/home/HomeScreen';
 import GroupsScreen from '../screens/groups/GroupsScreen';
+import HistoryScreen from '../screens/history/HistoryScreen';
 import GroupDetailScreen from '../screens/groups/GroupDetailScreen';
 import CreateGroupScreen from '../screens/groups/CreateGroupScreen';
 import PaymentScreen from '../screens/payment/PaymentScreen';
@@ -81,7 +82,7 @@ function MainTabs() {
       />
       <Tab.Screen
         name="History"
-        component={HomeScreen} // Using HomeScreen with history tab for now
+        component={HistoryScreen}
         options={{
           tabBarLabel: 'History',
           tabBarIcon: ({color, size}) => (

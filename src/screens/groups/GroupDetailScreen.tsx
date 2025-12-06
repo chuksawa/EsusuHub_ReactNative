@@ -118,7 +118,9 @@ export default function GroupDetailScreen() {
     );
   };
 
-  const isMember = currentGroupMembers.some(m => m.userId === user?.id);
+  const isMember = currentGroupMembers && currentGroupMembers.length > 0 
+    ? currentGroupMembers.some(m => m.userId === user?.id)
+    : false;
   const isAdmin = currentGroup?.adminId === user?.id;
 
   const formatDate = (dateString: string): string => {
@@ -322,7 +324,7 @@ export default function GroupDetailScreen() {
 
         {activeTab === 'members' && (
           <Card style={styles.card}>
-            {currentGroupMembers.length === 0 ? (
+            {!currentGroupMembers || currentGroupMembers.length === 0 ? (
               <View style={styles.emptyState}>
                 <Icon name="account-group-outline" size={48} color={colors.gray[400]} />
                 <Text style={styles.emptyText}>No members yet</Text>
@@ -333,13 +335,15 @@ export default function GroupDetailScreen() {
                   <View style={styles.memberAvatar}>
                     <Avatar
                       uri={member.avatarUrl}
-                      name={member.userName}
+                      name={member.userName || 'User'}
                       size={40}
                     />
                   </View>
                   <View style={styles.memberInfo}>
-                    <Text style={styles.memberName}>{member.userName}</Text>
-                    <Text style={styles.memberEmail}>{member.userEmail}</Text>
+                    <Text style={styles.memberName}>{member.userName || 'Unknown User'}</Text>
+                    {member.userEmail && (
+                      <Text style={styles.memberEmail}>{member.userEmail}</Text>
+                    )}
                     {member.role === 'admin' && (
                       <View style={styles.roleBadge}>
                         <Text style={styles.roleText}>Admin</Text>
@@ -347,9 +351,11 @@ export default function GroupDetailScreen() {
                     )}
                   </View>
                   <View style={styles.memberStats}>
-                    <Text style={styles.memberPosition}>#{member.position}</Text>
+                    {member.position && (
+                      <Text style={styles.memberPosition}>#{member.position}</Text>
+                    )}
                     <Text style={styles.memberContribution}>
-                      ₦{member.totalContributed.toLocaleString()}
+                      ₦{(member.totalContributed || 0).toLocaleString()}
                     </Text>
                   </View>
                 </View>

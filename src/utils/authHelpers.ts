@@ -136,7 +136,7 @@ export async function initializeAuth(): Promise<void> {
       } catch (error) {
         // In dev mode, if API fails, use stored data instead of logging out
         if (__DEV__) {
-          console.warn('API unavailable in dev mode, using stored auth data');
+          console.debug('API unavailable in dev mode, using stored auth data');
           const mockUser = {
             id: userId,
             email: userEmail || 'dev@esusuhub.com',

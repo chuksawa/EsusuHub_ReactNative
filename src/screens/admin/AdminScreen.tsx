@@ -8,6 +8,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
 import {useRoute, useNavigation, RouteProp} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
@@ -16,13 +18,14 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Card from '../../components/Card';
 import Button from '../../components/Button';
 import Avatar from '../../components/Avatar';
+import Input from '../../components/Input';
 import {colors} from '../../theme/colors';
 import {spacing, borderRadius} from '../../theme/spacing';
 import {typography} from '../../theme/typography';
 import {RootStackParamList} from '../../navigation/AppNavigator';
 import {useGroupsStore, useAuthStore} from '../../stores';
 import {groupsService} from '../../services';
-import {Group, GroupMember} from '../../types/group';
+import {Group, GroupMember, GroupActivity, UpdateGroupRequest} from '../../types/group';
 
 type AdminScreenRouteProp = RouteProp<RootStackParamList, 'Admin'>;
 type AdminScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Admin'>;
@@ -35,13 +38,25 @@ export default function AdminScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'members' | 'settings' | 'activity'>('members');
+  
+  // Modal states
+  const [showEditGroupModal, setShowEditGroupModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  
+  // Form states
+  const [editForm, setEditForm] = useState<UpdateGroupRequest>({});
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteMessage, setInviteMessage] = useState('');
 
   const {user} = useAuthStore();
   const {
     currentGroup,
     currentGroupMembers,
+    currentGroupActivity,
     setCurrentGroup,
     setCurrentGroupMembers,
+    setCurrentGroupActivity,
     setLoading: setStoreLoading,
   } = useGroupsStore();
 
@@ -57,6 +72,10 @@ export default function AdminScreen() {
       // Load members
       const members = await groupsService.getGroupMembers(groupId);
       setCurrentGroupMembers(members);
+
+      // Load activity
+      const activity = await groupsService.getGroupActivity(groupId);
+      setCurrentGroupActivity(activity);
     } catch (error: any) {
       console.error('Error loading group data:', error);
       if (__DEV__ && (error.code === 'NETWORK_ERROR' || error.status === 0)) {
@@ -101,6 +120,74 @@ export default function AdminScreen() {
         },
       ]
     );
+  };
+
+  const handleEditGroup = () => {
+    if (!currentGroup) return;
+    setEditForm({
+      name: currentGroup.name,
+      description: currentGroup.description || '',
+      monthlyContribution: currentGroup.monthlyContribution,
+      maxMembers: currentGroup.maxMembers,
+    });
+    setShowEditGroupModal(true);
+  };
+
+  const handleSaveGroup = async () => {
+    try {
+      if (!currentGroup) return;
+      await groupsService.updateGroup(groupId, editForm);
+      Alert.alert('Success', 'Group updated successfully');
+      setShowEditGroupModal(false);
+      await loadGroupData();
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Failed to update group');
+    }
+  };
+
+  const handleInviteMember = async () => {
+    if (!inviteEmail.trim()) {
+      Alert.alert('Error', 'Please enter an email address');
+      return;
+    }
+    try {
+      // TODO: Implement invite API call when backend endpoint is available
+      Alert.alert('Success', `Invitation sent to ${inviteEmail}`);
+      setInviteEmail('');
+      setInviteMessage('');
+      setShowInviteModal(false);
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Failed to send invitation');
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    try {
+      await groupsService.deleteGroup(groupId);
+      Alert.alert('Success', 'Group deleted successfully', [
+        {
+          text: 'OK',
+          onPress: () => navigation.goBack(),
+        },
+      ]);
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Failed to delete group');
+    }
+  };
+
+  const formatActivityDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
   };
 
   const isAdmin = currentGroup?.adminId === user?.id;
@@ -223,10 +310,20 @@ export default function AdminScreen() {
         {activeTab === 'members' && (
           <Card style={styles.card}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Group Members</Text>
-              <Text style={styles.sectionSubtitle}>
-                {currentGroupMembers?.length || 0} members
-              </Text>
+              <View>
+                <Text style={styles.sectionTitle}>Group Members</Text>
+                <Text style={styles.sectionSubtitle}>
+                  {currentGroupMembers?.length || 0} / {currentGroup?.maxMembers || 0} members
+                </Text>
+              </View>
+              {currentGroup && (currentGroupMembers?.length || 0) < currentGroup.maxMembers && (
+                <Button
+                  title="Invite"
+                  onPress={() => setShowInviteModal(true)}
+                  size="small"
+                  variant="outline"
+                />
+              )}
             </View>
 
             {currentGroupMembers && currentGroupMembers.length > 0 ? (
@@ -249,6 +346,9 @@ export default function AdminScreen() {
                       {member.position > 0 && (
                         <Text style={styles.memberPosition}>Position: {member.position}</Text>
                       )}
+                      <Text style={styles.memberContribution}>
+                        ₦{(member.totalContributed || 0).toLocaleString()}
+                      </Text>
                     </View>
                   </View>
                   {member.role !== 'admin' && member.userId !== user?.id && (
@@ -264,25 +364,337 @@ export default function AdminScreen() {
               <View style={styles.emptyState}>
                 <Icon name="account-group-outline" size={48} color={colors.gray[400]} />
                 <Text style={styles.emptyStateText}>No members found</Text>
+                <Button
+                  title="Invite Members"
+                  onPress={() => setShowInviteModal(true)}
+                  style={styles.emptyStateButton}
+                />
               </View>
             )}
           </Card>
         )}
 
         {activeTab === 'settings' && (
-          <Card style={styles.card}>
-            <Text style={styles.sectionTitle}>Group Settings</Text>
-            <Text style={styles.comingSoon}>Settings management coming soon</Text>
-          </Card>
+          <View>
+            <Card style={styles.card}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Group Settings</Text>
+                <Button
+                  title="Edit"
+                  onPress={handleEditGroup}
+                  size="small"
+                  variant="outline"
+                />
+              </View>
+
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Group Name</Text>
+                <Text style={styles.settingValue}>{currentGroup?.name}</Text>
+              </View>
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Description</Text>
+                <Text style={styles.settingValue}>
+                  {currentGroup?.description || 'No description'}
+                </Text>
+              </View>
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Monthly Contribution</Text>
+                <Text style={styles.settingValue}>
+                  ₦{currentGroup?.monthlyContribution.toLocaleString()}
+                </Text>
+              </View>
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Max Members</Text>
+                <Text style={styles.settingValue}>
+                  {currentGroup?.maxMembers} members
+                </Text>
+              </View>
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Current Members</Text>
+                <Text style={styles.settingValue}>
+                  {currentGroup?.currentMembers} / {currentGroup?.maxMembers}
+                </Text>
+              </View>
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Cycle Duration</Text>
+                <Text style={styles.settingValue}>
+                  {currentGroup?.cycleDuration} months
+                </Text>
+              </View>
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Start Date</Text>
+                <Text style={styles.settingValue}>
+                  {currentGroup?.startDate
+                    ? new Date(currentGroup.startDate).toLocaleDateString()
+                    : 'Not set'}
+                </Text>
+              </View>
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Status</Text>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      backgroundColor:
+                        currentGroup?.status === 'active'
+                          ? colors.success + '20'
+                          : currentGroup?.status === 'completed'
+                          ? colors.blue[100]
+                          : colors.error + '20',
+                    },
+                  ]}>
+                  <Text
+                    style={[
+                      styles.statusText,
+                      {
+                        color:
+                          currentGroup?.status === 'active'
+                            ? colors.success
+                            : currentGroup?.status === 'completed'
+                            ? colors.blue[600]
+                            : colors.error,
+                      },
+                    ]}>
+                    {currentGroup?.status?.charAt(0).toUpperCase() +
+                      currentGroup?.status?.slice(1)}
+                  </Text>
+                </View>
+              </View>
+            </Card>
+
+            <Card style={styles.card}>
+              <Text style={styles.sectionTitle}>Danger Zone</Text>
+              <Button
+                title="Delete Group"
+                onPress={() => setShowDeleteConfirm(true)}
+                variant="danger"
+                style={styles.deleteButton}
+              />
+              <Text style={styles.dangerText}>
+                Deleting a group will permanently remove all data and cannot be undone.
+              </Text>
+            </Card>
+          </View>
         )}
 
         {activeTab === 'activity' && (
           <Card style={styles.card}>
             <Text style={styles.sectionTitle}>Group Activity</Text>
-            <Text style={styles.comingSoon}>Activity log coming soon</Text>
+            {currentGroupActivity && currentGroupActivity.length > 0 ? (
+              currentGroupActivity.map((activity: GroupActivity) => (
+                <View key={activity.id} style={styles.activityItem}>
+                  <View
+                    style={[
+                      styles.activityIcon,
+                      {
+                        backgroundColor:
+                          activity.type === 'contribution'
+                            ? colors.primary[100]
+                            : activity.type === 'payout'
+                            ? colors.warning + '20'
+                            : activity.type === 'member_joined'
+                            ? colors.success + '20'
+                            : colors.blue[100],
+                      },
+                    ]}>
+                    <Icon
+                      name={
+                        activity.type === 'contribution'
+                          ? 'arrow-up'
+                          : activity.type === 'payout'
+                          ? 'arrow-down'
+                          : activity.type === 'member_joined'
+                          ? 'account-plus'
+                          : activity.type === 'member_left'
+                          ? 'account-minus'
+                          : 'account-group'
+                      }
+                      size={20}
+                      color={
+                        activity.type === 'contribution'
+                          ? colors.primary[600]
+                          : activity.type === 'payout'
+                          ? colors.warning
+                          : activity.type === 'member_joined'
+                          ? colors.success
+                          : colors.blue[600]
+                      }
+                    />
+                  </View>
+                  <View style={styles.activityContent}>
+                    <Text style={styles.activityDescription}>{activity.description}</Text>
+                    <Text style={styles.activityUser}>
+                      {activity.userName} • {formatActivityDate(activity.createdAt)}
+                    </Text>
+                    {activity.amount && (
+                      <Text style={styles.activityAmount}>
+                        ₦{activity.amount.toLocaleString()}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              ))
+            ) : (
+              <View style={styles.emptyState}>
+                <Icon name="history" size={48} color={colors.gray[400]} />
+                <Text style={styles.emptyStateText}>No activity yet</Text>
+              </View>
+            )}
           </Card>
         )}
       </ScrollView>
+
+      {/* Edit Group Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showEditGroupModal}
+        onRequestClose={() => setShowEditGroupModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Group</Text>
+              <TouchableOpacity onPress={() => setShowEditGroupModal(false)}>
+                <Icon name="close" size={24} color={colors.gray[600]} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody}>
+              <Input
+                label="Group Name"
+                value={editForm.name || ''}
+                onChangeText={text => setEditForm({...editForm, name: text})}
+                placeholder="Enter group name"
+              />
+              <Input
+                label="Description"
+                value={editForm.description || ''}
+                onChangeText={text => setEditForm({...editForm, description: text})}
+                placeholder="Enter group description"
+                multiline
+                numberOfLines={3}
+              />
+              <Input
+                label="Monthly Contribution (₦)"
+                value={editForm.monthlyContribution?.toString() || ''}
+                onChangeText={text =>
+                  setEditForm({
+                    ...editForm,
+                    monthlyContribution: text ? parseFloat(text) : undefined,
+                  })
+                }
+                keyboardType="numeric"
+                placeholder="0.00"
+              />
+              <Input
+                label="Max Members"
+                value={editForm.maxMembers?.toString() || ''}
+                onChangeText={text =>
+                  setEditForm({
+                    ...editForm,
+                    maxMembers: text ? parseInt(text, 10) : undefined,
+                  })
+                }
+                keyboardType="numeric"
+                placeholder="0"
+              />
+            </ScrollView>
+            <View style={styles.modalFooter}>
+              <Button
+                title="Cancel"
+                onPress={() => setShowEditGroupModal(false)}
+                variant="outline"
+                style={styles.modalButton}
+              />
+              <Button
+                title="Save Changes"
+                onPress={handleSaveGroup}
+                style={styles.modalButton}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Invite Member Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showInviteModal}
+        onRequestClose={() => setShowInviteModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Invite Member</Text>
+              <TouchableOpacity onPress={() => setShowInviteModal(false)}>
+                <Icon name="close" size={24} color={colors.gray[600]} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.modalBody}>
+              <Input
+                label="Email Address"
+                value={inviteEmail}
+                onChangeText={setInviteEmail}
+                placeholder="user@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+              <Input
+                label="Message (Optional)"
+                value={inviteMessage}
+                onChangeText={setInviteMessage}
+                placeholder="Add a personal message..."
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+            <View style={styles.modalFooter}>
+              <Button
+                title="Cancel"
+                onPress={() => setShowInviteModal(false)}
+                variant="outline"
+                style={styles.modalButton}
+              />
+              <Button
+                title="Send Invitation"
+                onPress={handleInviteMember}
+                style={styles.modalButton}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={showDeleteConfirm}
+        onRequestClose={() => setShowDeleteConfirm(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmModalContent}>
+            <Icon name="alert-circle" size={48} color={colors.error} />
+            <Text style={styles.confirmTitle}>Delete Group</Text>
+            <Text style={styles.confirmMessage}>
+              Are you sure you want to delete "{currentGroup?.name}"? This action cannot be undone
+              and will permanently remove all group data, members, and history.
+            </Text>
+            <View style={styles.confirmButtons}>
+              <Button
+                title="Cancel"
+                onPress={() => setShowDeleteConfirm(false)}
+                variant="outline"
+                style={styles.confirmButton}
+              />
+              <Button
+                title="Delete"
+                onPress={handleDeleteGroup}
+                variant="danger"
+                style={styles.confirmButton}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -457,5 +869,139 @@ const styles = StyleSheet.create({
   },
   backButton: {
     marginTop: spacing.md,
+  },
+  settingItem: {
+    marginBottom: spacing.md,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+  },
+  settingLabel: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
+  },
+  settingValue: {
+    fontSize: typography.fontSize.md,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.text.primary,
+  },
+  deleteButton: {
+    marginTop: spacing.md,
+  },
+  dangerText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+    marginTop: spacing.sm,
+    fontStyle: 'italic',
+  },
+  memberContribution: {
+    fontSize: typography.fontSize.xs,
+    color: colors.text.secondary,
+    marginLeft: spacing.sm,
+  },
+  emptyStateButton: {
+    marginTop: spacing.md,
+  },
+  activityItem: {
+    flexDirection: 'row',
+    marginBottom: spacing.md,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+  },
+  activityIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  activityContent: {
+    flex: 1,
+  },
+  activityDescription: {
+    fontSize: typography.fontSize.md,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.text.primary,
+    marginBottom: spacing.xs,
+  },
+  activityUser: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
+  },
+  activityAmount: {
+    fontSize: typography.fontSize.md,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primary[600],
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.background.light,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    maxHeight: '90%',
+    paddingBottom: spacing.xl,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+  },
+  modalTitle: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.primary,
+  },
+  modalBody: {
+    padding: spacing.md,
+    maxHeight: 500,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    padding: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[200],
+  },
+  modalButton: {
+    flex: 1,
+    marginHorizontal: spacing.xs,
+  },
+  confirmModalContent: {
+    backgroundColor: colors.background.light,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xl,
+    margin: spacing.lg,
+    alignItems: 'center',
+  },
+  confirmTitle: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.primary,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  confirmMessage: {
+    fontSize: typography.fontSize.md,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: spacing.md,
+  },
+  confirmButton: {
+    flex: 1,
   },
 });

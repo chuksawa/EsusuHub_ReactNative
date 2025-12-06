@@ -12,7 +12,7 @@ import Logo from './Logo';
 export default function LoadingScreen() {
   return (
     <View style={styles.container}>
-      <Logo size={160} />
+      <Logo size={200} />
       <ActivityIndicator 
         size="large" 
         color={colors.primary[600]} 

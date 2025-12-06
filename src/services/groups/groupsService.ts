@@ -132,20 +132,165 @@ class GroupsService {
    * Get group members
    */
   async getGroupMembers(groupId: string): Promise<GroupMember[]> {
-    const response = await apiClient.get<GroupMember[]>(
-      `/groups/${groupId}/members`
-    );
-    return response.data;
+    try {
+      const response = await apiClient.get<GroupMember[]>(
+        `/groups/${groupId}/members`
+      );
+      // If API returns empty array in dev mode, use mock data
+      if (__DEV__ && (!response.data || response.data.length === 0)) {
+        return this.getMockGroupMembers(groupId);
+      }
+      return response.data;
+    } catch (error: any) {
+      // In development mode, return mock data if API fails
+      if (__DEV__ && (error.code === 'NETWORK_ERROR' || error.code === 'TIMEOUT_ERROR' || error.status === 0)) {
+        console.debug('API unavailable or timed out, using mock data for development');
+        return this.getMockGroupMembers(groupId);
+      }
+      throw error;
+    }
   }
 
   /**
    * Get group activity
    */
   async getGroupActivity(groupId: string): Promise<GroupActivity[]> {
-    const response = await apiClient.get<GroupActivity[]>(
-      `/groups/${groupId}/activity`
-    );
-    return response.data;
+    try {
+      const response = await apiClient.get<GroupActivity[]>(
+        `/groups/${groupId}/activity`
+      );
+      // If API returns empty array in dev mode, use mock data
+      if (__DEV__ && (!response.data || response.data.length === 0)) {
+        return this.getMockGroupActivity(groupId);
+      }
+      return response.data;
+    } catch (error: any) {
+      // In development mode, return mock data if API fails
+      if (__DEV__ && (error.code === 'NETWORK_ERROR' || error.code === 'TIMEOUT_ERROR' || error.status === 0)) {
+        console.debug('API unavailable or timed out, using mock data for development');
+        return this.getMockGroupActivity(groupId);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get mock group members for development
+   */
+  private getMockGroupMembers(groupId: string): GroupMember[] {
+    const now = new Date();
+    return [
+      {
+        id: 'member-1',
+        userId: 'dev-user-123',
+        userName: 'John Doe',
+        userEmail: 'john.doe@example.com',
+        avatarUrl: undefined,
+        role: 'admin',
+        position: 1,
+        totalContributed: 500000,
+        joinedAt: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        id: 'member-2',
+        userId: 'user-2',
+        userName: 'Jane Smith',
+        userEmail: 'jane.smith@example.com',
+        avatarUrl: undefined,
+        role: 'member',
+        position: 2,
+        totalContributed: 450000,
+        joinedAt: new Date(now.getTime() - 85 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        id: 'member-3',
+        userId: 'user-3',
+        userName: 'Michael Johnson',
+        userEmail: 'michael.j@example.com',
+        avatarUrl: undefined,
+        role: 'member',
+        position: 3,
+        totalContributed: 400000,
+        joinedAt: new Date(now.getTime() - 80 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        id: 'member-4',
+        userId: 'user-4',
+        userName: 'Sarah Williams',
+        userEmail: 'sarah.w@example.com',
+        avatarUrl: undefined,
+        role: 'member',
+        position: 4,
+        totalContributed: 350000,
+        joinedAt: new Date(now.getTime() - 75 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        id: 'member-5',
+        userId: 'user-5',
+        userName: 'David Brown',
+        userEmail: 'david.brown@example.com',
+        avatarUrl: undefined,
+        role: 'member',
+        position: 5,
+        totalContributed: 300000,
+        joinedAt: new Date(now.getTime() - 70 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        id: 'member-6',
+        userId: 'user-6',
+        userName: 'Emily Davis',
+        userEmail: 'emily.davis@example.com',
+        avatarUrl: undefined,
+        role: 'member',
+        position: 6,
+        totalContributed: 250000,
+        joinedAt: new Date(now.getTime() - 65 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    ];
+  }
+
+  /**
+   * Get mock group activity for development
+   */
+  private getMockGroupActivity(groupId: string): GroupActivity[] {
+    const now = new Date();
+    return [
+      {
+        id: 'activity-1',
+        type: 'contribution',
+        userId: 'user-2',
+        userName: 'Jane Smith',
+        amount: 50000,
+        description: 'Made monthly contribution',
+        createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        id: 'activity-2',
+        type: 'member_joined',
+        userId: 'user-6',
+        userName: 'Emily Davis',
+        description: 'Joined the group',
+        createdAt: new Date(now.getTime() - 65 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        id: 'activity-3',
+        type: 'contribution',
+        userId: 'user-3',
+        userName: 'Michael Johnson',
+        amount: 50000,
+        description: 'Made monthly contribution',
+        createdAt: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        id: 'activity-4',
+        type: 'payout',
+        userId: 'user-1',
+        userName: 'John Doe',
+        amount: 500000,
+        description: 'Received payout',
+        createdAt: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    ];
   }
 
   /**
