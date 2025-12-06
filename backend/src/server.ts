@@ -109,13 +109,19 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 // Start server
-const PORT = config.port;
+// Railway sets PORT automatically, fallback to config.port
+const PORT = process.env.PORT || config.port;
 
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 API available at http://localhost:${PORT}/api`);
-  console.log(`📱 For Android emulator: http://10.0.2.2:${PORT}/api`);
+  if (config.nodeEnv === 'development') {
+    console.log(`📱 For Android emulator: http://10.0.2.2:${PORT}/api`);
+  }
   console.log(`🌍 Environment: ${config.nodeEnv}`);
+  if (process.env.RAILWAY_ENVIRONMENT) {
+    console.log(`🚂 Railway Environment: ${process.env.RAILWAY_ENVIRONMENT}`);
+  }
 });
 
 // Handle server errors

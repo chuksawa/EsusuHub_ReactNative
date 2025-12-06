@@ -1,0 +1,48 @@
+# Azure DevOps Pipeline for Railway Deployment
+# This pipeline builds and deploys the backend to Railway
+
+trigger:
+  branches:
+    include:
+      - main
+      - master
+      - develop
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  RAILWAY_TOKEN: $(RAILWAY_TOKEN) # Set in Azure DevOps Variables
+  NODE_VERSION: '18.x'
+
+steps:
+  - task: NodeTool@0
+    inputs:
+      versionSpec: $(NODE_VERSION)
+    displayName: 'Install Node.js'
+
+  - script: |
+      npm install -g @railway/cli
+    displayName: 'Install Railway CLI'
+
+  - script: |
+      cd backend
+      npm ci
+      npm run build
+    displayName: 'Build TypeScript'
+
+  - script: |
+      cd backend
+      railway login --token $(RAILWAY_TOKEN)
+      railway up --detach
+    displayName: 'Deploy to Railway'
+    env:
+      RAILWAY_TOKEN: $(RAILWAY_TOKEN)
+    condition: and(succeeded(), ne(variables['Build.SourceBranch'], 'refs/heads/develop'))
+
+  - script: |
+      echo "Deployment completed successfully"
+      echo "Service URL: Check Railway dashboard for your service URL"
+    displayName: 'Deployment Summary'
+    condition: succeeded()
+

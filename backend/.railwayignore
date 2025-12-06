@@ -1,0 +1,17 @@
+# Files to ignore when deploying to Railway
+node_modules
+.env
+.env.local
+*.log
+.DS_Store
+uploads/*
+!uploads/.gitkeep
+test-*.ts
+check-*.ts
+create-*.ts
+register-*.ts
+set-*.ts
+list-*.ts
+*.ps1
+TROUBLESHOOTING.md
+
