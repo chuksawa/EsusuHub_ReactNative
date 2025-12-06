@@ -257,16 +257,32 @@ class ApiClient {
       
       // Add timeout to prevent hanging requests
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout for registration
       
       let response: Response;
       try {
-        response = await fetch(`${this.baseUrl}${endpoint}`, {
+        const url = `${this.baseUrl}${endpoint}`;
+        if (__DEV__) {
+          console.log(`[ApiClient] POST ${url}`);
+        }
+        response = await fetch(url, {
           method: 'POST',
           headers,
           body: data ? JSON.stringify(data) : undefined,
           signal: controller.signal,
         });
+      } catch (fetchError: any) {
+        if (fetchError.name === 'AbortError' || fetchError.name === 'TimeoutError') {
+          if (__DEV__) {
+            console.error(`[ApiClient] Request timeout to ${this.baseUrl}${endpoint}`);
+          }
+          throw {
+            message: 'Request timeout - server may be unreachable. Please check if backend is running.',
+            status: 0,
+            code: 'TIMEOUT_ERROR',
+          } as ApiError;
+        }
+        throw fetchError;
       } finally {
         clearTimeout(timeoutId);
       }

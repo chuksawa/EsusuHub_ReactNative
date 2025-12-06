@@ -73,7 +73,33 @@ export default function RegisterScreen() {
       return;
     }
 
-    setLoading(true);
+    // Test connection first in dev mode
+    if (__DEV__) {
+      try {
+        const {testBackendConnection} = await import('../../utils/testConnection');
+        const testResult = await testBackendConnection();
+        if (!testResult.success) {
+          const apiUrl = (await import('../../config/env')).default.API_BASE_URL;
+          Alert.alert(
+            'Connection Test Failed',
+            `${testResult.message}\n\nPlease check:\n• Backend server is running\n• Firewall allows port 5166\n• Current API URL: ${apiUrl}`,
+            [
+              {text: 'Cancel', style: 'cancel'},
+              {text: 'Try Anyway', onPress: () => proceedWithRegistration()},
+            ]
+          );
+          return;
+        }
+      } catch (error) {
+        // If test fails, continue anyway
+        console.warn('Connection test failed, proceeding:', error);
+      }
+    }
+
+    proceedWithRegistration();
+  };
+
+  const proceedWithRegistration = async () => {
     try {
       // Call real API - backend expects fullName, not firstName/lastName
       const fullName = `${formData.firstName} ${formData.lastName}`.trim();
@@ -140,11 +166,14 @@ export default function RegisterScreen() {
       let errorMessage = 'Registration failed. Please try again.';
       
       // Provide more helpful error messages
-      if (error?.code === 'NETWORK_ERROR' || error?.status === 0) {
+      if (error?.code === 'NETWORK_ERROR' || error?.code === 'TIMEOUT_ERROR' || error?.status === 0) {
+        const config = await import('../../config/env');
+        const apiUrl = config.default.API_BASE_URL;
         errorMessage = 'Cannot connect to server. Please check:\n\n' +
           '• Backend server is running (port 5166)\n' +
           '• You are connected to the internet\n' +
-          '• For Android emulator, server should be accessible at 10.0.2.2:5166';
+          `• Current API URL: ${apiUrl}\n` +
+          '• Firewall allows port 5166';
       } else if (error?.message) {
         errorMessage = error.message;
       }

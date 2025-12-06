@@ -34,6 +34,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Logging middleware
 if (config.nodeEnv === 'development') {
   app.use(morgan('dev'));
+  // Additional request logging for debugging
+  app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} from ${req.ip || req.connection.remoteAddress}`);
+    next();
+  });
 } else {
   app.use(morgan('combined'));
 }
@@ -52,6 +57,40 @@ app.use('/api/', limiter);
 // Health check endpoint
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Simple test endpoint for connectivity
+app.get('/test', (_req, res) => {
+  res.json({ 
+    message: 'Server is reachable!',
+    timestamp: new Date().toISOString(),
+    server: 'EsusuHub Backend',
+    version: '1.0.0'
+  });
+});
+
+// Quick health check (no database, instant response)
+app.get('/health-quick', (_req, res) => {
+  res.json({ 
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    server: 'EsusuHub Backend'
+  });
+});
+
+// Test registration endpoint (no auth required, for testing)
+app.post('/api/test-register', express.json(), async (req, res) => {
+  try {
+    const { email, fullName } = req.body;
+    res.json({
+      success: true,
+      message: 'Test registration endpoint reached',
+      data: { email, fullName },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // API routes

@@ -43,57 +43,85 @@ const upload = multer({
 // Get user profile
 router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    console.log('📋 [GET_PROFILE] Fetching profile for user:', req.userId);
+    
+    // Query Supabase schema: public.users + auth.users join
+    // The userId from JWT could be either public.users.id or auth.users.id
+    // Try matching on both
     const result = await pool.query(
-      `SELECT u.id, u.email, u.phone, u.full_name, u.handle, u.avatar_url, u.is_verified,
-              u.bvn, u.nin, u.date_of_birth, u.address, u.city, u.state, u.country,
-              u.occupation, u.monthly_income, u.created_at, u.updated_at, u.last_login, u.status,
-              up.emergency_contact_name, up.emergency_contact_phone, up.emergency_contact_relationship,
-              up.preferred_language, up.notification_preferences, up.kyc_status, up.kyc_documents
-       FROM users u
-       LEFT JOIN user_profiles up ON u.id = up.user_id
-       WHERE u.id = $1`,
+      `SELECT 
+         COALESCE(pu.id, au.id) as id,
+         au.id as auth_user_id,
+         pu.id as public_user_id,
+         au.email,
+         COALESCE(pu.phone, au.phone) as phone,
+         pu.full_name,
+         au.email_confirmed_at,
+         pu.metadata,
+         pu.created_at,
+         pu.updated_at,
+         au.last_sign_in_at as last_login
+       FROM auth.users au
+       LEFT JOIN public.users pu ON pu.auth_user_id = au.id
+       WHERE (pu.id = $1 OR au.id = $1)
+       LIMIT 1`,
       [req.userId]
     );
 
     if (result.rows.length === 0) {
+      console.log('❌ [GET_PROFILE] User not found:', req.userId);
       res.status(404).json({ message: 'User not found', code: 'NOT_FOUND' });
       return;
     }
 
     const user = result.rows[0];
+    console.log('✅ [GET_PROFILE] Profile found for:', user.email);
+    
+    // Extract additional data from metadata JSONB if available
+    const metadata = user.metadata || {};
+    
     res.json({
       id: user.id,
       email: user.email,
-      phone: user.phone,
-      fullName: user.full_name,
-      handle: user.handle,
-      avatarUrl: user.avatar_url,
-      isVerified: user.is_verified,
-      bvn: user.bvn,
-      nin: user.nin,
-      dateOfBirth: user.date_of_birth,
-      address: user.address,
-      city: user.city,
-      state: user.state,
-      country: user.country,
-      occupation: user.occupation,
-      monthlyIncome: user.monthly_income ? parseFloat(user.monthly_income) : null,
-      emergencyContact: {
-        name: user.emergency_contact_name,
-        phone: user.emergency_contact_phone,
-        relationship: user.emergency_contact_relationship,
+      phone: user.phone || '',
+      fullName: user.full_name || '',
+      handle: metadata.handle || '',
+      avatarUrl: metadata.avatar_url || null,
+      isVerified: !!user.email_confirmed_at,
+      bvn: metadata.bvn || null,
+      nin: metadata.nin || null,
+      dateOfBirth: metadata.date_of_birth || null,
+      address: metadata.address || null,
+      city: metadata.city || null,
+      state: metadata.state || null,
+      country: metadata.country || 'Nigeria',
+      occupation: metadata.occupation || null,
+      monthlyIncome: metadata.monthly_income ? parseFloat(metadata.monthly_income) : null,
+      emergencyContact: metadata.emergency_contact || {
+        name: null,
+        phone: null,
+        relationship: null,
       },
-      preferredLanguage: user.preferred_language,
-      notificationPreferences: user.notification_preferences,
-      kycStatus: user.kyc_status,
-      kycDocuments: user.kyc_documents,
+      preferredLanguage: metadata.preferred_language || 'en',
+      notificationPreferences: metadata.notification_preferences || {
+        email: true,
+        sms: true,
+        push: true,
+      },
+      kycStatus: metadata.kyc_status || 'pending',
+      kycDocuments: metadata.kyc_documents || null,
       createdAt: user.created_at,
       updatedAt: user.updated_at,
       lastLogin: user.last_login,
-      status: user.status,
+      status: metadata.status || 'active',
     });
   } catch (error: any) {
-    res.status(500).json({ message: 'Failed to get profile', code: 'GET_PROFILE_ERROR' });
+    console.error('❌ [GET_PROFILE] Error:', error.message);
+    res.status(500).json({ 
+      message: 'Failed to get profile', 
+      code: 'GET_PROFILE_ERROR',
+      ...(process.env.NODE_ENV === 'development' && { details: error.message })
+    });
   }
 });
 

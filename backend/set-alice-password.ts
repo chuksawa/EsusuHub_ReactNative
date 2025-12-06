@@ -1,34 +1,45 @@
 /**
- * Set password for Alice test user
+ * Set a password for Alice in the database
+ * Usage: npx tsx set-alice-password.ts <password>
  */
 
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
-import bcrypt from 'bcryptjs';
+import { hashPassword } from './src/utils/password';
 
 dotenv.config();
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('supabase')
-    ? { rejectUnauthorized: false }
-    : undefined,
+  ssl: { rejectUnauthorized: false },
 });
 
-async function setAlicePassword() {
+async function setPassword() {
+  const password = process.argv[2] || 'Password123!'; // Default password
+  
   try {
-    const password = 'password123';
-    const hash = await bcrypt.hash(password, 10);
+    console.log('Setting password for alice@example.com...');
     
-    await pool.query(
-      'UPDATE users SET password_hash = $1 WHERE email = $2',
-      [hash, 'alice@example.com']
+    // Hash the password
+    const hashedPassword = await hashPassword(password);
+    console.log('Password hashed');
+    
+    // Update auth.users
+    const result = await pool.query(
+      `UPDATE auth.users 
+       SET encrypted_password = $1, 
+           updated_at = NOW()
+       WHERE email = 'alice@example.com'
+       RETURNING id, email`,
+      [hashedPassword]
     );
     
-    console.log('✅ Password set for alice@example.com');
-    console.log('   Email: alice@example.com');
-    console.log('   Password: password123');
-    console.log('\nYou can now log in with these credentials in the app!');
+    if (result.rows.length > 0) {
+      console.log('✅ Password set successfully for:', result.rows[0].email);
+      console.log('You can now login with: alice@example.com /', password);
+    } else {
+      console.log('❌ User not found');
+    }
     
     await pool.end();
   } catch (error: any) {
@@ -38,5 +49,4 @@ async function setAlicePassword() {
   }
 }
 
-setAlicePassword();
-
+setPassword();

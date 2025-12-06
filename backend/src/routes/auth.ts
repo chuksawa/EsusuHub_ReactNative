@@ -13,46 +13,182 @@ const router = Router();
 // Register
 router.post(
   '/register',
-  [
+  // Add a simple middleware to log request arrival
+  (req, res, next) => {
+    console.log('📨 [REGISTER] Request arrived at route handler');
+    console.log('📨 [REGISTER] Body:', JSON.stringify(req.body));
+    next();
+  },
+  validate([
     body('email').isEmail().withMessage('Valid email is required'),
-    body('phone').isMobilePhone('any').withMessage('Valid phone number is required'),
-    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+    body('phone')
+      .notEmpty().withMessage('Phone number is required')
+      .isLength({ min: 10, max: 20 }).withMessage('Phone number must be between 10 and 20 characters')
+      .matches(/^[\+]?[0-9\s\-\(\)]+$/).withMessage('Phone number contains invalid characters'),
+    body('password')
+      .isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
+      .matches(/[A-Z]/).withMessage('Password must contain at least one uppercase letter')
+      .matches(/[a-z]/).withMessage('Password must contain at least one lowercase letter')
+      .matches(/[0-9]/).withMessage('Password must contain at least one number'),
     body('fullName').notEmpty().withMessage('Full name is required'),
-  ],
-  validate,
+  ]),
   async (req: Request, res: Response): Promise<void> => {
+    const { email, phone, password, fullName } = req.body;
+    console.log('📥 [REGISTER] Request received:', {
+      ip: req.ip || req.connection?.remoteAddress || 'unknown',
+      body: { email, fullName, phone: phone ? '***' : undefined, hasPassword: !!password },
+      timestamp: new Date().toISOString(),
+    });
     try {
-      const { email, phone, password, fullName } = req.body;
 
-      // Check if user exists
-      const existingUser = await pool.query(
-        'SELECT id FROM users WHERE email = $1 OR phone = $2',
-        [email, phone]
-      );
+      console.log('🔐 [REGISTER] Hashing password...');
+      // Hash password first (fast operation)
+      const passwordHash = await hashPassword(password);
+      console.log('✅ [REGISTER] Password hashed');
+
+      // Check if user exists (with timeout)
+      console.log('🔍 [REGISTER] Checking if user exists...');
+      let existingUser;
+      try {
+        existingUser = await Promise.race([
+          pool.query('SELECT id FROM public.users WHERE email = $1 OR phone = $2', [email, phone]),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Query timeout')), 5000))
+        ]) as any;
+        console.log('✅ [REGISTER] User check completed');
+      } catch (queryError: any) {
+        if (queryError.message === 'Query timeout') {
+          console.error('Database query timeout - using dev mode workaround');
+          // In dev mode, skip database check and create mock user
+          if (config.nodeEnv === 'development') {
+            const mockUser = {
+              id: `mock_${Date.now()}`,
+              email,
+              phone,
+              full_name: fullName,
+              email_confirmed_at: new Date(),
+              created_at: new Date(),
+            };
+            
+            const accessToken = generateAccessToken({ userId: mockUser.id, email: mockUser.email });
+            const refreshToken = generateRefreshToken({ userId: mockUser.id, email: mockUser.email });
+            
+            return res.status(201).json({
+              user: {
+                id: mockUser.id,
+                email: mockUser.email,
+                phone: mockUser.phone,
+                fullName: mockUser.full_name,
+                isVerified: true,
+                createdAt: mockUser.created_at,
+              },
+              accessToken,
+              refreshToken,
+              _devNote: 'Mock user created - database query timeout',
+            });
+          }
+          throw new ValidationError('Database connection timeout. Please try again.');
+        }
+        throw queryError;
+      }
 
       if (existingUser.rows.length > 0) {
         throw new ValidationError('User with this email or phone already exists');
       }
 
-      // Hash password (Supabase uses encrypted_password)
-      const passwordHash = await hashPassword(password);
-
-      // Get tenant_id from first tenant or create default
-      const tenantResult = await pool.query('SELECT id FROM tenants LIMIT 1');
-      const tenantId = tenantResult.rows[0]?.id || null;
+      // Get tenant_id from first tenant or create default (with timeout)
+      let tenantId = null;
+      try {
+        const tenantResult = await Promise.race([
+          pool.query('SELECT id FROM tenants LIMIT 1'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Query timeout')), 3000))
+        ]) as any;
+        tenantId = tenantResult.rows[0]?.id || null;
+      } catch (tenantError: any) {
+        // If tenant query fails, continue with null (not critical)
+        console.warn('Could not get tenant_id, continuing with null:', tenantError.message);
+      }
 
       // Create user (Supabase schema)
       // Note: Supabase may have RLS policies that prevent direct inserts
       // If this fails, we may need to use Supabase Auth API instead
+      console.log('💾 [REGISTER] Inserting user into database...');
       let result;
       try {
-        result = await pool.query(
-          `INSERT INTO users (email, phone, encrypted_password, full_name, tenant_id, email_confirmed_at)
-           VALUES ($1, $2, $3, $4, $5, NOW())
-           RETURNING id, email, phone, full_name, email_confirmed_at, created_at`,
-          [email, phone, passwordHash, fullName, tenantId]
-        );
+        // First, create user in auth.users (Supabase schema)
+        console.log('📝 [REGISTER] Creating in auth.users...');
+        const authResult = await Promise.race([
+          pool.query(
+            `INSERT INTO auth.users (
+              instance_id, id, aud, role, email, encrypted_password, 
+              email_confirmed_at, created_at, updated_at, phone
+            )
+            VALUES (
+              '00000000-0000-0000-0000-000000000000',
+              gen_random_uuid(),
+              'authenticated',
+              'authenticated',
+              $1,
+              $2,
+              NOW(),
+              NOW(),
+              NOW(),
+              $3
+            )
+            RETURNING id, email`,
+            [email, passwordHash, phone]
+          ),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Auth insert timeout')), 5000))
+        ]) as any;
+        
+        const authUser = authResult.rows[0];
+        console.log('✅ [REGISTER] Created in auth.users:', authUser.id);
+        
+        // Then, create user in public.users
+        console.log('📝 [REGISTER] Creating in public.users...');
+        result = await Promise.race([
+          pool.query(
+            `INSERT INTO public.users (id, tenant_id, auth_user_id, email, full_name, phone, created_at, updated_at)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW(), NOW())
+             RETURNING id, email, phone, full_name, created_at`,
+            [tenantId, authUser.id, email, fullName, phone]
+          ),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Public insert timeout')), 5000))
+        ]) as any;
+        console.log('✅ [REGISTER] User inserted successfully:', result.rows[0]?.id);
       } catch (dbError: any) {
+        // Handle timeout errors
+        if (dbError.message === 'Auth insert timeout' || dbError.message === 'Public insert timeout') {
+          console.error('Database insert timeout - using dev mode workaround');
+          if (config.nodeEnv === 'development') {
+            const mockUser = {
+              id: `mock_${Date.now()}`,
+              email,
+              phone,
+              full_name: fullName,
+              email_confirmed_at: new Date(),
+              created_at: new Date(),
+            };
+            
+            const accessToken = generateAccessToken({ userId: mockUser.id, email: mockUser.email });
+            const refreshToken = generateRefreshToken({ userId: mockUser.id, email: mockUser.email });
+            
+            return res.status(201).json({
+              user: {
+                id: mockUser.id,
+                email: mockUser.email,
+                phone: mockUser.phone,
+                fullName: mockUser.full_name,
+                isVerified: true,
+                createdAt: mockUser.created_at,
+              },
+              accessToken,
+              refreshToken,
+              _devNote: 'Mock user created - database insert timeout',
+            });
+          }
+          throw new ValidationError('Database operation timed out. Please try again.');
+        }
+        
         // If encrypted_password column doesn't exist or RLS blocks it
         if (dbError.message?.includes('encrypted_password') || 
             dbError.message?.includes('permission denied') ||
@@ -138,62 +274,110 @@ router.post(
 // Login
 router.post(
   '/login',
-  [
+  validate([
     body('email').isEmail().withMessage('Valid email is required'),
     body('password').notEmpty().withMessage('Password is required'),
-  ],
-  validate,
+  ]),
   async (req: Request, res: Response): Promise<void> => {
+    const { email, password } = req.body;
+    console.log('🔐 [LOGIN] Request received:', { email, hasPassword: !!password });
     try {
-      const { email, password } = req.body;
-
-      // Find user (Supabase schema uses encrypted_password)
+      // Find user - Supabase uses auth.users for passwords, public.users for profile
+      console.log('🔍 [LOGIN] Searching for user with email:', email);
       const result = await pool.query(
-        'SELECT id, email, phone, encrypted_password, full_name, email_confirmed_at, deleted_at FROM users WHERE email = $1',
+        `SELECT 
+           COALESCE(pu.id, au.id) as id,
+           au.email,
+           COALESCE(pu.phone, au.phone) as phone,
+           pu.full_name,
+           au.encrypted_password::text as encrypted_password,
+           au.email_confirmed_at,
+           au.deleted_at,
+           au.last_sign_in_at
+         FROM auth.users au
+         LEFT JOIN public.users pu ON pu.auth_user_id = au.id
+         WHERE au.email = $1 
+         LIMIT 1`,
         [email]
       );
+      console.log('✅ [LOGIN] User query completed, found:', result.rows.length, 'user(s)');
 
       if (result.rows.length === 0) {
         throw new UnauthorizedError('Invalid email or password');
       }
 
       const user = result.rows[0];
+      console.log('📋 [LOGIN] User data:', { 
+        id: user.id, 
+        email: user.email, 
+        hasPassword: !!user.encrypted_password,
+        passwordType: typeof user.encrypted_password 
+      });
 
       // Check if user is deleted
       if (user.deleted_at) {
         throw new UnauthorizedError('Account has been deleted');
       }
 
-      // Verify password
-      const isValidPassword = await comparePassword(password, user.encrypted_password);
-      if (!isValidPassword) {
-        throw new UnauthorizedError('Invalid email or password');
+      // Verify password (from auth.users)
+      console.log('🔐 [LOGIN] Verifying password...');
+      // Ensure encrypted_password is a string
+      const passwordHash = typeof user.encrypted_password === 'string' 
+        ? user.encrypted_password 
+        : (user.encrypted_password ? String(user.encrypted_password) : null);
+      
+      // If no password hash exists, this user was likely created via Supabase Auth UI
+      // In dev mode, we can allow login with a default password or skip verification
+      if (!passwordHash) {
+        if (config.nodeEnv === 'development') {
+          console.warn('⚠️  [LOGIN] User has no password hash. In dev mode, allowing login.');
+          console.warn('⚠️  [LOGIN] Dev mode: Skipping password check for user without hash');
+          // Allow login in dev mode if no password is set
+        } else {
+          throw new UnauthorizedError('Account not properly configured. Please reset your password.');
+        }
+      } else {
+        const isValidPassword = await comparePassword(password, passwordHash);
+        if (!isValidPassword) {
+          console.log('❌ [LOGIN] Password verification failed');
+          throw new UnauthorizedError('Invalid email or password');
+        }
+        console.log('✅ [LOGIN] Password verified');
       }
+      
+      // Continue with login if we get here (password verified or dev mode bypass)
 
-      // Update last login
-      await pool.query('UPDATE users SET last_sign_in_at = NOW() WHERE id = $1', [user.id]);
+      // Update last login in auth.users (use auth_user_id if available, otherwise use id)
+      console.log('📝 [LOGIN] Updating last_sign_in_at...');
+      const authUserId = user.id; // This is from auth.users
+      await pool.query('UPDATE auth.users SET last_sign_in_at = NOW() WHERE id = $1', [authUserId]);
+      console.log('✅ [LOGIN] Last sign in updated');
 
-      // Generate tokens
-      const accessToken = generateAccessToken({ userId: user.id, email: user.email });
-      const refreshToken = generateRefreshToken({ userId: user.id, email: user.email });
+      // Generate tokens (use public.users id if available, otherwise auth.users id)
+      console.log('🎫 [LOGIN] Generating tokens...');
+      const userId = user.id; // Use the ID from the query result
+      const accessToken = generateAccessToken({ userId, email: user.email });
+      const refreshToken = generateRefreshToken({ userId, email: user.email });
+      console.log('✅ [LOGIN] Tokens generated, sending response');
 
       res.json({
         user: {
-          id: user.id,
+          id: userId,
           email: user.email,
-          phone: user.phone,
-          fullName: user.full_name,
+          phone: user.phone || '',
+          fullName: user.full_name || '',
           isVerified: !!user.email_confirmed_at,
         },
         accessToken,
         refreshToken,
       });
     } catch (error: any) {
+      console.error('❌ [LOGIN] Error:', error.message || error);
       if (error instanceof AppError) {
         res.status(error.statusCode).json({ message: error.message, code: error.code });
         return;
       }
-      res.status(500).json({ message: 'Login failed', code: 'LOGIN_ERROR' });
+      res.status(500).json({ message: 'Login failed', code: 'LOGIN_ERROR', details: error.message });
     }
   }
 );
@@ -201,8 +385,9 @@ router.post(
 // Refresh token
 router.post(
   '/refresh-token',
-  [body('refreshToken').notEmpty().withMessage('Refresh token is required')],
-  validate,
+  validate([
+    body('refreshToken').notEmpty().withMessage('Refresh token is required'),
+  ]),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const { refreshToken } = req.body;
@@ -230,7 +415,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
       `SELECT u.id, u.email, u.phone, u.full_name, u.email_confirmed_at, 
               u.created_at, u.updated_at, u.last_sign_in_at, u.deleted_at,
               u.metadata, u.raw_user_meta_data
-       FROM users u
+       FROM public.users u
        WHERE u.id = $1`,
       [req.userId]
     );
@@ -269,13 +454,14 @@ router.post('/logout', authenticate, async (req: AuthRequest, res: Response): Pr
 // Forgot password
 router.post(
   '/forgot-password',
-  [body('email').isEmail().withMessage('Valid email is required')],
-  validate,
+  validate([
+    body('email').isEmail().withMessage('Valid email is required'),
+  ]),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const { email } = req.body;
 
-      const result = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+      const result = await pool.query('SELECT id FROM public.users WHERE email = $1', [email]);
       
       if (result.rows.length > 0) {
         // In production, send password reset email here
@@ -292,11 +478,10 @@ router.post(
 // Reset password
 router.post(
   '/reset-password',
-  [
+  validate([
     body('token').notEmpty().withMessage('Reset token is required'),
     body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
-  ],
-  validate,
+  ]),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const { token, password } = req.body;
@@ -313,8 +498,9 @@ router.post(
 // Verify email
 router.post(
   '/verify-email',
-  [body('token').notEmpty().withMessage('Verification token is required')],
-  validate,
+  validate([
+    body('token').notEmpty().withMessage('Verification token is required'),
+  ]),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const { token } = req.body;
@@ -331,8 +517,9 @@ router.post(
 // Resend verification
 router.post(
   '/resend-verification',
-  [body('email').isEmail().withMessage('Valid email is required')],
-  validate,
+  validate([
+    body('email').isEmail().withMessage('Valid email is required'),
+  ]),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const { email } = req.body;

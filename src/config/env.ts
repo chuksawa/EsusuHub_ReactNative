@@ -25,13 +25,25 @@ const getEnvVar = (key: string, defaultValue?: string): string => {
   }
 };
 
+// Helper to get the API base URL with fallback
+const getApiBaseUrl = (): string => {
+  const envUrl = getEnvVar('API_BASE_URL');
+  if (envUrl) return envUrl;
+  
+  if (__DEV__) {
+    // Using localhost with ADB port forwarding (adb reverse tcp:5166 tcp:5166)
+    // If this doesn't work, try: http://10.0.2.2:5166/api or http://10.0.0.187:5166/api
+    return 'http://localhost:5166/api';
+  }
+  return 'https://api.esusuhub.com/api';
+};
+
 export const config = {
   // API Configuration
-  // For Android emulator, use 10.0.2.2 instead of localhost
+  // For Android emulator, try 10.0.2.2 first, fallback to your computer's IP
   // For physical device, use your computer's IP address (e.g., http://192.168.1.100:5166/api)
-  API_BASE_URL: getEnvVar('API_BASE_URL', __DEV__ 
-    ? 'http://10.0.2.2:5166/api'  // Android emulator uses 10.0.2.2 to access host machine
-    : 'https://api.esusuhub.com/api'),
+  // Your computer's IP: 10.0.0.187 (update if it changes)
+  API_BASE_URL: getApiBaseUrl(),
   
   // Supabase Configuration
   SUPABASE_URL: getEnvVar('SUPABASE_URL', ''),
