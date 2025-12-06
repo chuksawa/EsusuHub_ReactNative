@@ -11,7 +11,7 @@ const poolConfig: PoolConfig = {
   password: process.env.DB_PASSWORD || 'postgres',
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000, // Increased to 10 seconds for Supabase
   // Enable SSL for Supabase connections
   ssl: process.env.DATABASE_URL?.includes('supabase') || process.env.DB_HOST?.includes('supabase')
     ? { rejectUnauthorized: false }
@@ -25,6 +25,8 @@ if (process.env.DATABASE_URL) {
   if (process.env.DATABASE_URL.includes('supabase')) {
     poolConfig.ssl = { rejectUnauthorized: false };
   }
+  // Override timeout when using connection string
+  poolConfig.connectionTimeoutMillis = 10000;
 }
 
 export const pool = new Pool(poolConfig);
@@ -43,6 +45,12 @@ pool.query('SELECT NOW()')
     console.error('⚠️  Database connection error:', err.message);
     console.error('   Server will continue but database operations may fail');
     console.error('   Check your DATABASE_URL in .env file');
+    console.error('   Connection timeout set to 10 seconds');
+    if (process.env.DATABASE_URL) {
+      const url = process.env.DATABASE_URL;
+      const maskedUrl = url.replace(/:[^:@]+@/, ':****@'); // Mask password
+      console.error(`   DATABASE_URL: ${maskedUrl.substring(0, 50)}...`);
+    }
   });
 
 export default pool;

@@ -50,6 +50,11 @@ export default function CreateGroupScreen() {
 
   useEffect(() => {
     loadConfiguration();
+    // Set default start date to today
+    setFormData(prev => ({
+      ...prev,
+      startDate: prev.startDate || formatDateForInput(new Date()),
+    }));
   }, []);
 
   const loadConfiguration = async () => {
@@ -63,6 +68,8 @@ export default function CreateGroupScreen() {
         ...prev,
         maxMembers: groupConfig.maxMembers.toString(),
         cycleDuration: groupConfig.cycleDurations[0]?.toString() || '12',
+        // Keep existing startDate or set to today
+        startDate: prev.startDate || formatDateForInput(new Date()),
       }));
     } catch (error: any) {
       console.error('Error loading configuration:', error);
@@ -291,28 +298,21 @@ export default function CreateGroupScreen() {
 
           <Input
             label="Start Date *"
-            placeholder="Select start date"
+            placeholder="YYYY-MM-DD (e.g., 2025-01-15)"
             value={formData.startDate}
             onChangeText={text => {
-              setFormData({...formData, startDate: text});
+              // Allow only date format characters
+              const cleaned = text.replace(/[^0-9-]/g, '');
+              setFormData({...formData, startDate: cleaned});
               if (errors.startDate) setErrors({...errors, startDate: ''});
             }}
             error={errors.startDate}
             leftIcon="calendar"
-            editable={false}
-            onFocus={() => {
-              // For date picker, you might want to use a date picker library
-              // For now, using text input with date format
-              if (!formData.startDate) {
-                setFormData({
-                  ...formData,
-                  startDate: formatDateForInput(new Date()),
-                });
-              }
-            }}
+            keyboardType="numeric"
+            maxLength={10}
           />
           <Text style={styles.hint}>
-            Select the date when the group will start collecting contributions
+            Format: YYYY-MM-DD (e.g., {formatDateForInput(new Date())}). The group will start collecting contributions on this date.
           </Text>
 
           <Button

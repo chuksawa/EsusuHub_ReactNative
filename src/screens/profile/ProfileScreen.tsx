@@ -50,7 +50,24 @@ export default function ProfileScreen() {
       setTransactions(userTransactions.data || []);
     } catch (error: any) {
       console.error('Error loading profile data:', error);
-      Alert.alert('Error', error?.message || 'Failed to load profile data. Please try again.');
+      
+      // Don't show alert for network errors in dev mode - just log
+      if (__DEV__ && (error.code === 'NETWORK_ERROR' || error.status === 0)) {
+        console.warn('ProfileScreen: Network error - backend may not be reachable');
+        // In dev mode, we can continue with existing profile data if available
+        if (profile) {
+          console.log('ProfileScreen: Using existing profile data');
+          return;
+        }
+      }
+      
+      // Only show alert for non-network errors or in production
+      if (!__DEV__ || (error.code !== 'NETWORK_ERROR' && error.status !== 0)) {
+        Alert.alert(
+          'Error', 
+          error?.message || 'Failed to load profile data. Please check your connection and try again.'
+        );
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);

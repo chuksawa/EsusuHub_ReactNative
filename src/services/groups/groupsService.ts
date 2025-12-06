@@ -163,6 +163,13 @@ class GroupsService {
   }
 
   /**
+   * Remove member from group (admin only)
+   */
+  async removeMember(groupId: string, userId: string): Promise<void> {
+    await apiClient.delete(`/groups/${groupId}/members/${userId}`);
+  }
+
+  /**
    * Get group configuration options
    */
   async getGroupConfiguration(): Promise<GroupConfiguration> {

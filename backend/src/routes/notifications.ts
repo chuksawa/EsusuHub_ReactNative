@@ -148,7 +148,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response): Pro
 router.get('/settings', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const result = await pool.query(
-      'SELECT notification_preferences FROM user_profiles WHERE user_id = $1',
+      'SELECT metadata FROM public.users WHERE id = $1',
       [req.userId]
     );
 
@@ -161,7 +161,8 @@ router.get('/settings', authenticate, async (req: AuthRequest, res: Response): P
       return;
     }
 
-    const preferences = result.rows[0].notification_preferences || {
+    const metadata = result.rows[0].metadata || {};
+    const preferences = metadata.notification_preferences || {
       email: true,
       sms: true,
       push: true,
@@ -192,21 +193,30 @@ router.put(
       if (sms !== undefined) preferences.sms = sms;
       if (push !== undefined) preferences.push = push;
 
-      await pool.query(
-        `UPDATE user_profiles
-         SET notification_preferences = COALESCE(notification_preferences, '{}'::jsonb) || $1::jsonb,
-             updated_at = NOW()
-         WHERE user_id = $2`,
-        [JSON.stringify(preferences), req.userId]
-      );
-
-      // Get updated preferences
-      const result = await pool.query(
-        'SELECT notification_preferences FROM user_profiles WHERE user_id = $1',
+      // Get current metadata
+      const currentResult = await pool.query(
+        'SELECT metadata FROM public.users WHERE id = $1',
         [req.userId]
       );
+      
+      const currentMetadata = currentResult.rows[0]?.metadata || {};
+      const updatedMetadata = {
+        ...currentMetadata,
+        notification_preferences: {
+          ...(currentMetadata.notification_preferences || { email: true, sms: true, push: true }),
+          ...preferences,
+        },
+      };
 
-      res.json(result.rows[0].notification_preferences || { email: true, sms: true, push: true });
+      await pool.query(
+        `UPDATE public.users
+         SET metadata = $1::jsonb,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [JSON.stringify(updatedMetadata), req.userId]
+      );
+
+      res.json(updatedMetadata.notification_preferences || { email: true, sms: true, push: true });
     } catch (error: any) {
       res.status(500).json({ message: 'Failed to update settings', code: 'UPDATE_SETTINGS_ERROR' });
     }

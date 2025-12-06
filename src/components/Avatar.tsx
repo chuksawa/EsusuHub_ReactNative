@@ -20,13 +20,18 @@ export default function Avatar({uri, name, size = 40, style}: AvatarProps) {
 
   // Get initials from name
   const getInitials = (nameStr?: string): string => {
-    if (!nameStr) return '?';
-    const parts = nameStr.trim().split(' ');
+    if (!nameStr || nameStr.trim() === '') return '';
+    const parts = nameStr.trim().split(' ').filter(p => p.length > 0);
     if (parts.length >= 2) {
-      return (parts[0][0] + parts[1][0]).toUpperCase();
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     }
-    return nameStr[0]?.toUpperCase() || '?';
+    if (parts.length === 1) {
+      return parts[0][0]?.toUpperCase() || '';
+    }
+    return '';
   };
+
+  const initials = getInitials(name);
 
   // Use image if available and no error
   if (uri && !imageError) {
@@ -54,17 +59,17 @@ export default function Avatar({uri, name, size = 40, style}: AvatarProps) {
         },
         style,
       ]}>
-      {name ? (
+      {initials ? (
         <Text
           style={{
             color: colors.text.white,
             fontSize: size * 0.4,
             fontWeight: 'bold',
           }}>
-          {getInitials(name)}
+          {initials}
         </Text>
       ) : (
-        <Icon name="account" size={size * 0.6} color={colors.text.white} />
+        <Icon name="account-circle" size={size * 0.8} color={colors.text.white} />
       )}
     </View>
   );

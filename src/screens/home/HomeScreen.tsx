@@ -52,28 +52,52 @@ export default function HomeScreen() {
     }
 
     const totalSaved = groups.reduce((sum, group) => {
-      // Calculate based on monthly contribution and cycle
-      const monthsActive = Math.floor(
-        (new Date().getTime() - new Date(group.startDate).getTime()) /
-          (1000 * 60 * 60 * 24 * 30)
-      );
-      return sum + group.monthlyContribution * Math.min(monthsActive, group.cycleDuration);
+      try {
+        // Ensure we have valid values
+        const monthlyContribution = Number(group.monthlyContribution) || 0;
+        const cycleDuration = Number(group.cycleDuration) || 0;
+        
+        if (!group.startDate) {
+          return sum; // Skip if no start date
+        }
+        
+        const startDate = new Date(group.startDate);
+        if (isNaN(startDate.getTime())) {
+          return sum; // Skip if invalid date
+        }
+        
+        // Calculate based on monthly contribution and cycle
+        const now = new Date();
+        const monthsActive = Math.floor(
+          (now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30)
+        );
+        
+        // Only add if we have valid numbers
+        if (monthlyContribution > 0 && cycleDuration > 0) {
+          return sum + monthlyContribution * Math.min(Math.max(monthsActive, 0), cycleDuration);
+        }
+        
+        return sum;
+      } catch (error) {
+        console.warn('Error calculating savings for group:', group.id, error);
+        return sum;
+      }
     }, 0);
 
-    const monthlyContribution = groups.reduce(
-      (sum, group) => sum + group.monthlyContribution,
-      0
-    );
+    const monthlyContribution = groups.reduce((sum, group) => {
+      const contribution = Number(group.monthlyContribution) || 0;
+      return sum + contribution;
+    }, 0);
 
     // Find next payout (simplified - would need more logic based on payout schedule)
     const activeGroups = groups.filter(g => g.status === 'active');
     const nextPayout = activeGroups.length > 0 ? activeGroups[0].startDate : null;
 
     return {
-      totalSaved,
-      monthlyContribution,
+      totalSaved: Number(totalSaved) || 0,
+      monthlyContribution: Number(monthlyContribution) || 0,
       nextPayout,
-      groupSize: groups.reduce((sum, g) => sum + g.currentMembers, 0),
+      groupSize: groups.reduce((sum, g) => sum + (Number(g.currentMembers) || 0), 0),
       position: 0, // Would need to calculate based on user's position in groups
     };
   };

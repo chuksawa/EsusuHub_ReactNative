@@ -19,7 +19,7 @@ router.get(
       const offset = (page - 1) * pageSize;
 
       // Get user's tenant_id
-      const userResult = await pool.query('SELECT tenant_id FROM users WHERE id = $1', [req.userId]);
+      const userResult = await pool.query('SELECT tenant_id FROM public.users WHERE id = $1', [req.userId]);
       const tenantId = userResult.rows[0]?.tenant_id;
 
       let queryText = '';
@@ -30,7 +30,7 @@ router.get(
           SELECT sg.*, u.full_name as creator_name,
                  COUNT(DISTINCT gm.id) as current_members
           FROM savings_groups sg
-          LEFT JOIN users u ON sg.created_by = u.id
+          LEFT JOIN public.users u ON sg.created_by = u.id
           LEFT JOIN group_memberships gm ON sg.id = gm.group_id
           WHERE EXISTS (
             SELECT 1 FROM group_memberships gm2
@@ -47,7 +47,7 @@ router.get(
           SELECT sg.*, u.full_name as creator_name,
                  COUNT(DISTINCT gm.id) as current_members
           FROM savings_groups sg
-          LEFT JOIN users u ON sg.created_by = u.id
+          LEFT JOIN public.users u ON sg.created_by = u.id
           LEFT JOIN group_memberships gm ON sg.id = gm.group_id
           WHERE 1=1
           ${tenantId ? 'AND sg.tenant_id = $1' : ''}
@@ -90,6 +90,34 @@ router.get(
   }
 );
 
+// Get group configuration (MUST come before /:id route)
+router.get('/configuration', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    // system_settings table may not exist in Supabase, so return default configuration
+    // In the future, this could be stored in a settings table or environment variables
+    console.log('📋 [GROUP_CONFIG] Returning default configuration');
+    
+    // Match the frontend GroupConfiguration interface
+    res.json({
+      minContribution: 1000,
+      maxContribution: 10000000,
+      minMembers: 2,
+      maxMembers: 50,
+      cycleDurations: [6, 12, 18, 24], // Common cycle durations in months
+    });
+  } catch (error: any) {
+    console.error('❌ [GROUP_CONFIG] Error:', error.message);
+    // Return defaults even on error
+    res.json({
+      minContribution: 1000,
+      maxContribution: 10000000,
+      minMembers: 2,
+      maxMembers: 50,
+      cycleDurations: [6, 12, 18, 24],
+    });
+  }
+});
+
 // Get user's groups
 router.get('/my-groups', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -100,7 +128,7 @@ router.get('/my-groups', authenticate, async (req: AuthRequest, res: Response): 
     }
 
     // Get user's tenant_id
-    const userResult = await pool.query('SELECT tenant_id FROM users WHERE id = $1', [req.userId]);
+    const userResult = await pool.query('SELECT tenant_id FROM public.users WHERE id = $1', [req.userId]);
     const tenantId = userResult.rows[0]?.tenant_id;
 
     const result = await pool.query(
@@ -109,7 +137,7 @@ router.get('/my-groups', authenticate, async (req: AuthRequest, res: Response): 
               gm.role
        FROM savings_groups sg
        JOIN group_memberships gm ON sg.id = gm.group_id
-       LEFT JOIN users u ON sg.created_by = u.id
+       LEFT JOIN public.users u ON sg.created_by = u.id
        WHERE gm.user_id = $1 ${tenantId ? 'AND sg.tenant_id = $2' : ''}
        GROUP BY sg.id, u.full_name, gm.role
        ORDER BY sg.created_at DESC`,
@@ -150,34 +178,59 @@ router.get('/my-groups', authenticate, async (req: AuthRequest, res: Response): 
 router.get('/:id', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    console.log('📋 [GET_GROUP] Fetching group:', id);
 
-    const result = await pool.query(
-      `SELECT sg.*, u.full_name as creator_name,
-              COUNT(DISTINCT gm.id) as current_members
+    // First get the group
+    const groupResult = await pool.query(
+      `SELECT sg.*, u.full_name as creator_name
        FROM savings_groups sg
-       LEFT JOIN users u ON sg.created_by = u.id
-       LEFT JOIN group_memberships gm ON sg.id = gm.group_id
-       WHERE sg.id = $1
-       GROUP BY sg.id, u.full_name`,
+       LEFT JOIN public.users u ON sg.created_by = u.id
+       WHERE sg.id = $1`,
       [id]
     );
 
-    if (result.rows.length === 0) {
+    if (groupResult.rows.length === 0) {
+      console.log('❌ [GET_GROUP] Group not found:', id);
       throw new NotFoundError('Group not found');
     }
 
-    const row = result.rows[0];
-    const settings = row.settings || {};
+    // Get member count separately
+    const memberCountResult = await pool.query(
+      `SELECT COUNT(*) as count FROM group_memberships WHERE group_id = $1`,
+      [id]
+    );
+
+    const row = groupResult.rows[0];
+    // Parse settings JSONB - it might be a string or already an object
+    let settings = {};
+    try {
+      if (typeof row.settings === 'string') {
+        settings = JSON.parse(row.settings);
+      } else if (row.settings) {
+        settings = row.settings;
+      }
+    } catch (e) {
+      console.warn('⚠️  [GET_GROUP] Could not parse settings:', e);
+      settings = {};
+    }
+
+    const currentMembers = parseInt(memberCountResult.rows[0]?.count || '0');
+    
+    console.log('✅ [GET_GROUP] Group found:', row.name);
+
     res.json({
       id: row.id,
       name: row.name,
       description: row.description,
       adminId: row.created_by,
-      adminName: row.creator_name,
+      adminName: row.creator_name || 'Unknown',
       monthlyContribution: parseFloat(settings.monthly_contribution || '0'),
-      totalMembers: parseInt(settings.max_members || '0'),
-      currentMembers: parseInt(row.current_members) || 0,
-      startDate: settings.start_date || null,
+      currency: 'NGN', // Default currency
+      maxMembers: parseInt(settings.max_members || '0'),
+      totalMembers: parseInt(settings.max_members || '0'), // For compatibility
+      currentMembers,
+      cycleDuration: settings.cycle_duration || parseInt(settings.max_members || '12'), // Calculate from members or default
+      startDate: settings.start_date || row.created_at,
       endDate: settings.end_date || null,
       payoutOrder: settings.payout_order || 'fixed',
       penaltyFee: parseFloat(settings.penalty_fee || '0'),
@@ -188,11 +241,16 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response): Promis
       updatedAt: row.updated_at,
     });
   } catch (error: any) {
+    console.error('❌ [GET_GROUP] Error:', error.message);
     if (error instanceof NotFoundError) {
       res.status(error.statusCode).json({ message: error.message, code: error.code });
       return;
     }
-    res.status(500).json({ message: 'Failed to get group', code: 'GET_GROUP_ERROR' });
+    res.status(500).json({ 
+      message: 'Failed to get group', 
+      code: 'GET_GROUP_ERROR',
+      ...(process.env.NODE_ENV === 'development' && { details: error.message })
+    });
   }
 });
 
@@ -200,42 +258,71 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response): Promis
 router.post(
   '/',
   authenticate,
-  [
+  validate([
     body('name').notEmpty().withMessage('Group name is required'),
     body('monthlyContribution').isFloat({ min: 0 }).withMessage('Monthly contribution must be a positive number'),
-    body('totalMembers').isInt({ min: 2, max: 50 }).withMessage('Total members must be between 2 and 50'),
+    body('maxMembers').optional().isInt({ min: 2, max: 50 }).withMessage('Max members must be between 2 and 50'),
+    body('totalMembers').optional().isInt({ min: 2, max: 50 }).withMessage('Total members must be between 2 and 50'),
+    body('cycleDuration').optional().isInt({ min: 1 }).withMessage('Cycle duration must be a positive number'),
     body('startDate').isISO8601().withMessage('Valid start date is required'),
     body('payoutOrder').optional().isIn(['fixed', 'random', 'bidding']).withMessage('Invalid payout order'),
-  ],
-  validate,
+  ]),
   async (req: AuthRequest, res: Response): Promise<void> => {
+    console.log('📝 [CREATE_GROUP] Request received from user:', req.userId);
     try {
       const {
         name,
         description,
         monthlyContribution,
         totalMembers,
+        maxMembers, // Frontend might send maxMembers instead of totalMembers
         startDate,
         endDate,
         payoutOrder = 'fixed',
         penaltyFee = 0,
         groupImageUrl,
         rules,
+        cycleDuration, // Frontend sends cycleDuration
       } = req.body;
 
-      // Get user's tenant_id
-      const userResult = await pool.query('SELECT tenant_id FROM users WHERE id = $1', [req.userId]);
-      const tenantId = userResult.rows[0]?.tenant_id;
+      console.log('📝 [CREATE_GROUP] Request body:', {
+        name,
+        monthlyContribution,
+        totalMembers,
+        maxMembers,
+        startDate,
+        cycleDuration,
+      });
 
-      // Calculate end date if not provided (assuming monthly cycles)
-      const calculatedEndDate = endDate || new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + totalMembers));
+      // Use maxMembers if totalMembers is not provided
+      const finalTotalMembers = totalMembers || maxMembers;
+      if (!finalTotalMembers) {
+        throw new ValidationError('Total members or max members is required');
+      }
+
+      // Get user's tenant_id
+      console.log('🔍 [CREATE_GROUP] Getting tenant_id...');
+      const userResult = await pool.query({
+        text: 'SELECT tenant_id FROM public.users WHERE id = $1',
+        values: [req.userId],
+        timeout: 3000,
+      });
+      const tenantId = userResult.rows[0]?.tenant_id;
+      console.log('✅ [CREATE_GROUP] Tenant ID:', tenantId);
+
+      // Calculate end date if not provided
+      // Use cycleDuration if provided, otherwise use totalMembers
+      const cycleMonths = cycleDuration || finalTotalMembers;
+      const calculatedEndDate = endDate || new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + cycleMonths));
+      console.log('📅 [CREATE_GROUP] Calculated end date:', calculatedEndDate);
 
       // Build settings JSON
       const settings = {
         monthly_contribution: monthlyContribution,
-        max_members: totalMembers,
+        max_members: finalTotalMembers,
+        cycle_duration: cycleMonths,
         start_date: startDate,
-        end_date: calculatedEndDate,
+        end_date: calculatedEndDate.toISOString().split('T')[0], // Format as YYYY-MM-DD
         payout_order: payoutOrder,
         penalty_fee: penaltyFee,
         group_image_url: groupImageUrl,
@@ -243,42 +330,64 @@ router.post(
         status: 'recruiting',
       };
 
-      const result = await pool.query(
-        `INSERT INTO savings_groups (name, description, created_by, tenant_id, settings)
-         VALUES ($1, $2, $3, $4, $5)
+      console.log('💾 [CREATE_GROUP] Inserting group into database...');
+      const result = await pool.query({
+        text: `INSERT INTO savings_groups (name, description, created_by, tenant_id, settings)
+         VALUES ($1, $2, $3, $4, $5::jsonb)
          RETURNING *`,
-        [name, description, req.userId, tenantId, JSON.stringify(settings)]
-      );
+        values: [name, description || null, req.userId, tenantId, JSON.stringify(settings)],
+        timeout: 5000,
+      });
 
       const group = result.rows[0];
+      console.log('✅ [CREATE_GROUP] Group created:', group.id);
 
-      // Add creator as owner/admin member
-      await pool.query(
-        `INSERT INTO group_memberships (group_id, user_id, role, joined_at)
-         VALUES ($1, $2, 'owner', NOW())`,
-        [group.id, req.userId]
-      );
+      // Add creator as admin member
+      console.log('👤 [CREATE_GROUP] Adding creator as admin member...');
+      await pool.query({
+        text: `INSERT INTO group_memberships (group_id, user_id, role, joined_at)
+         VALUES ($1, $2, 'admin', CURRENT_DATE)`,
+        values: [group.id, req.userId],
+        timeout: 3000,
+      });
+      console.log('✅ [CREATE_GROUP] Creator added as admin');
 
+      const parsedSettings = typeof group.settings === 'string' ? JSON.parse(group.settings) : (group.settings || settings);
+      
+      console.log('✅ [CREATE_GROUP] Sending response');
       res.status(201).json({
         id: group.id,
         name: group.name,
         description: group.description,
         adminId: group.created_by,
-        monthlyContribution: parseFloat(settings.monthly_contribution),
-        totalMembers: parseInt(settings.max_members),
+        adminName: 'You', // Will be filled by frontend
+        monthlyContribution: parseFloat(parsedSettings.monthly_contribution || settings.monthly_contribution),
+        currency: 'NGN',
+        maxMembers: parseInt(parsedSettings.max_members || settings.max_members),
+        totalMembers: parseInt(parsedSettings.max_members || settings.max_members),
         currentMembers: 1,
-        startDate: settings.start_date,
-        endDate: settings.end_date,
-        payoutOrder: settings.payout_order,
-        penaltyFee: parseFloat(settings.penalty_fee),
-        status: settings.status,
-        groupImageUrl: settings.group_image_url,
-        rules: settings.rules,
+        cycleDuration: parseInt(parsedSettings.cycle_duration || settings.cycle_duration || finalTotalMembers),
+        startDate: parsedSettings.start_date || settings.start_date,
+        endDate: parsedSettings.end_date || settings.end_date,
+        payoutOrder: parsedSettings.payout_order || settings.payout_order,
+        penaltyFee: parseFloat(parsedSettings.penalty_fee || settings.penalty_fee),
+        status: parsedSettings.status || settings.status,
+        groupImageUrl: parsedSettings.group_image_url || settings.group_image_url,
+        rules: parsedSettings.rules || settings.rules,
         createdAt: group.created_at,
         updatedAt: group.updated_at,
       });
     } catch (error: any) {
-      res.status(500).json({ message: 'Failed to create group', code: 'CREATE_GROUP_ERROR' });
+      console.error('❌ [CREATE_GROUP] Error:', error.message);
+      if (error instanceof NotFoundError || error instanceof ValidationError) {
+        res.status(error.statusCode).json({ message: error.message, code: error.code });
+        return;
+      }
+      res.status(500).json({ 
+        message: 'Failed to create group', 
+        code: 'CREATE_GROUP_ERROR',
+        ...(process.env.NODE_ENV === 'development' && { details: error.message })
+      });
     }
   }
 );
@@ -287,18 +396,17 @@ router.post(
 router.put(
   '/:id',
   authenticate,
-  [
+  validate([
     body('name').optional().notEmpty().withMessage('Group name cannot be empty'),
     body('monthlyContribution').optional().isFloat({ min: 0 }).withMessage('Monthly contribution must be a positive number'),
-  ],
-  validate,
+  ]),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
 
       // Check if user is admin
       const adminCheck = await pool.query(
-        'SELECT admin_id FROM savings_groups WHERE id = $1',
+        'SELECT created_by FROM savings_groups WHERE id = $1',
         [id]
       );
 
@@ -306,7 +414,7 @@ router.put(
         throw new NotFoundError('Group not found');
       }
 
-      if (adminCheck.rows[0].admin_id !== req.userId) {
+      if (adminCheck.rows[0].created_by !== req.userId) {
         throw new ForbiddenError('Only group admin can update the group');
       }
 
@@ -379,7 +487,7 @@ router.put(
         `SELECT sg.*, u.full_name as admin_name,
                 COUNT(DISTINCT gm.id) as current_members
          FROM savings_groups sg
-         JOIN users u ON sg.admin_id = u.id
+         JOIN public.users u ON sg.created_by = u.id
          LEFT JOIN group_memberships gm ON sg.id = gm.group_id AND gm.status = 'active'
          WHERE sg.id = $1
          GROUP BY sg.id, u.full_name`,
@@ -391,7 +499,7 @@ router.put(
         id: row.id,
         name: row.name,
         description: row.description,
-        adminId: row.admin_id,
+        adminId: row.created_by,
         adminName: row.admin_name,
         monthlyContribution: parseFloat(row.monthly_contribution),
         totalMembers: row.total_members,
@@ -455,7 +563,7 @@ router.get('/:id/members', authenticate, async (req: AuthRequest, res: Response)
     const result = await pool.query(
       `SELECT gm.*, u.full_name, u.email, u.phone
        FROM group_memberships gm
-       JOIN users u ON gm.user_id = u.id
+       JOIN public.users u ON gm.user_id = u.id
        WHERE gm.group_id = $1
        ORDER BY gm.joined_at ASC`,
       [id]
@@ -566,7 +674,7 @@ router.post('/:id/join', authenticate, async (req: AuthRequest, res: Response): 
     // Add member (no status column in Supabase schema)
     await pool.query(
       `INSERT INTO group_memberships (group_id, user_id, role, joined_at)
-       VALUES ($1, $2, 'member', NOW())`,
+       VALUES ($1, $2, 'member', CURRENT_DATE)`,
       [id, req.userId]
     );
 
@@ -649,27 +757,60 @@ router.post('/:id/leave', authenticate, async (req: AuthRequest, res: Response):
   }
 });
 
-// Get group configuration
-router.get('/configuration', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+// Remove member from group (admin only)
+router.delete('/:id/members/:userId', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const result = await pool.query(
-      "SELECT key, value FROM system_settings WHERE key IN ('max_group_members', 'min_contribution_amount', 'max_contribution_amount', 'default_penalty_percentage')"
+    const { id, userId } = req.params;
+
+    // Check if user is admin of the group
+    const groupCheck = await pool.query(
+      'SELECT created_by FROM savings_groups WHERE id = $1',
+      [id]
     );
 
-    const config: any = {};
-    result.rows.forEach((row) => {
-      config[row.key] = row.value;
-    });
+    if (groupCheck.rows.length === 0) {
+      throw new NotFoundError('Group not found');
+    }
 
-    res.json({
-      maxGroupMembers: parseInt(config.max_group_members || '50'),
-      minContributionAmount: parseFloat(config.min_contribution_amount || '1000'),
-      maxContributionAmount: parseFloat(config.max_contribution_amount || '10000000'),
-      defaultPenaltyPercentage: parseFloat(config.default_penalty_percentage || '5'),
-      payoutOrders: ['fixed', 'random', 'bidding'],
-    });
+    if (groupCheck.rows[0].created_by !== req.userId) {
+      throw new ForbiddenError('Only group admin can remove members');
+    }
+
+    // Check if target user is a member
+    const memberCheck = await pool.query(
+      'SELECT role FROM group_memberships WHERE group_id = $1 AND user_id = $2',
+      [id, userId]
+    );
+
+    if (memberCheck.rows.length === 0) {
+      throw new NotFoundError('User is not a member of this group');
+    }
+
+    // Don't allow removing admin
+    if (memberCheck.rows[0].role === 'admin') {
+      throw new ValidationError('Cannot remove group admin');
+    }
+
+    // Remove member
+    await pool.query(
+      'DELETE FROM group_memberships WHERE group_id = $1 AND user_id = $2',
+      [id, userId]
+    );
+
+    // Update group member count
+    const memberCountResult = await pool.query(
+      'SELECT COUNT(*) as count FROM group_memberships WHERE group_id = $1',
+      [id]
+    );
+    const currentMembers = parseInt(memberCountResult.rows[0].count);
+
+    res.json({ message: 'Member removed successfully', currentMembers });
   } catch (error: any) {
-    res.status(500).json({ message: 'Failed to get configuration', code: 'GET_CONFIG_ERROR' });
+    if (error instanceof NotFoundError || error instanceof ValidationError || error instanceof ForbiddenError) {
+      res.status(error.statusCode).json({ message: error.message, code: error.code });
+      return;
+    }
+    res.status(500).json({ message: 'Failed to remove member', code: 'REMOVE_MEMBER_ERROR' });
   }
 });
 

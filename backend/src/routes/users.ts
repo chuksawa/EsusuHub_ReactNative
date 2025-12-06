@@ -156,7 +156,7 @@ router.put(
       // Check if handle is taken (if changed)
       if (handle) {
         const handleCheck = await pool.query(
-          'SELECT id FROM users WHERE handle = $1 AND id != $2',
+          'SELECT id FROM public.users WHERE metadata->>\'handle\' = $1 AND id != $2',
           [handle, req.userId]
         );
         if (handleCheck.rows.length > 0) {
@@ -167,7 +167,7 @@ router.put(
       // Check if phone is taken (if changed)
       if (phone) {
         const phoneCheck = await pool.query(
-          'SELECT id FROM users WHERE phone = $1 AND id != $2',
+          'SELECT id FROM public.users WHERE phone = $1 AND id != $2',
           [phone, req.userId]
         );
         if (phoneCheck.rows.length > 0) {
@@ -175,142 +175,112 @@ router.put(
         }
       }
 
-      // Update user
+      // Get current user metadata
+      const currentUser = await pool.query(
+        'SELECT metadata FROM public.users WHERE id = $1',
+        [req.userId]
+      );
+      const currentMetadata = currentUser.rows[0]?.metadata || {};
+
+      // Build update fields for public.users
       const updateFields: string[] = [];
       const updateValues: any[] = [];
       let paramCount = 1;
+      const newMetadata = { ...currentMetadata };
 
       if (fullName) {
         updateFields.push(`full_name = $${paramCount++}`);
         updateValues.push(fullName);
       }
-      if (handle) {
-        updateFields.push(`handle = $${paramCount++}`);
-        updateValues.push(handle);
-      }
       if (phone) {
         updateFields.push(`phone = $${paramCount++}`);
         updateValues.push(phone);
       }
-      if (dateOfBirth) {
-        updateFields.push(`date_of_birth = $${paramCount++}`);
-        updateValues.push(dateOfBirth);
-      }
-      if (address) {
-        updateFields.push(`address = $${paramCount++}`);
-        updateValues.push(address);
-      }
-      if (city) {
-        updateFields.push(`city = $${paramCount++}`);
-        updateValues.push(city);
-      }
-      if (state) {
-        updateFields.push(`state = $${paramCount++}`);
-        updateValues.push(state);
-      }
-      if (country) {
-        updateFields.push(`country = $${paramCount++}`);
-        updateValues.push(country);
-      }
-      if (occupation) {
-        updateFields.push(`occupation = $${paramCount++}`);
-        updateValues.push(occupation);
-      }
-      if (monthlyIncome !== undefined) {
-        updateFields.push(`monthly_income = $${paramCount++}`);
-        updateValues.push(monthlyIncome);
+      
+      // Store extended fields in metadata JSONB
+      if (handle) newMetadata.handle = handle;
+      if (dateOfBirth) newMetadata.date_of_birth = dateOfBirth;
+      if (address) newMetadata.address = address;
+      if (city) newMetadata.city = city;
+      if (state) newMetadata.state = state;
+      if (country) newMetadata.country = country;
+      if (occupation) newMetadata.occupation = occupation;
+      if (monthlyIncome !== undefined) newMetadata.monthly_income = monthlyIncome;
+      if (emergencyContact) newMetadata.emergency_contact = emergencyContact;
+      if (preferredLanguage) newMetadata.preferred_language = preferredLanguage;
+      if (notificationPreferences) newMetadata.notification_preferences = notificationPreferences;
+
+      // Update metadata if it changed
+      if (Object.keys(newMetadata).length > Object.keys(currentMetadata).length || 
+          JSON.stringify(newMetadata) !== JSON.stringify(currentMetadata)) {
+        updateFields.push(`metadata = $${paramCount++}`);
+        updateValues.push(JSON.stringify(newMetadata));
       }
 
       if (updateFields.length > 0) {
         updateValues.push(req.userId);
         await pool.query(
-          `UPDATE users SET ${updateFields.join(', ')}, updated_at = NOW() WHERE id = $${paramCount}`,
+          `UPDATE public.users SET ${updateFields.join(', ')}, updated_at = NOW() WHERE id = $${paramCount}`,
           updateValues
         );
       }
 
-      // Update user profile
-      if (emergencyContact || preferredLanguage || notificationPreferences) {
-        const profileFields: string[] = [];
-        const profileValues: any[] = [];
-        let profileParamCount = 1;
-
-        if (emergencyContact) {
-          if (emergencyContact.name) {
-            profileFields.push(`emergency_contact_name = $${profileParamCount++}`);
-            profileValues.push(emergencyContact.name);
-          }
-          if (emergencyContact.phone) {
-            profileFields.push(`emergency_contact_phone = $${profileParamCount++}`);
-            profileValues.push(emergencyContact.phone);
-          }
-          if (emergencyContact.relationship) {
-            profileFields.push(`emergency_contact_relationship = $${profileParamCount++}`);
-            profileValues.push(emergencyContact.relationship);
-          }
-        }
-        if (preferredLanguage) {
-          profileFields.push(`preferred_language = $${profileParamCount++}`);
-          profileValues.push(preferredLanguage);
-        }
-        if (notificationPreferences) {
-          profileFields.push(`notification_preferences = $${profileParamCount++}`);
-          profileValues.push(JSON.stringify(notificationPreferences));
-        }
-
-        if (profileFields.length > 0) {
-          profileValues.push(req.userId);
-          await pool.query(
-            `UPDATE user_profiles SET ${profileFields.join(', ')}, updated_at = NOW() WHERE user_id = $${profileParamCount}`,
-            profileValues
-          );
-        }
-      }
-
-      // Get updated user
+      // Get updated user (same query as /me endpoint)
       const result = await pool.query(
-        `SELECT u.id, u.email, u.phone, u.full_name, u.handle, u.avatar_url, u.is_verified,
-                u.bvn, u.nin, u.date_of_birth, u.address, u.city, u.state, u.country,
-                u.occupation, u.monthly_income, u.created_at, u.updated_at, u.last_login, u.status,
-                up.emergency_contact_name, up.emergency_contact_phone, up.emergency_contact_relationship,
-                up.preferred_language, up.notification_preferences, up.kyc_status, up.kyc_documents
-         FROM users u
-         LEFT JOIN user_profiles up ON u.id = up.user_id
-         WHERE u.id = $1`,
+        `SELECT 
+           COALESCE(pu.id, au.id) as id,
+           au.email,
+           COALESCE(pu.phone, au.phone) as phone,
+           pu.full_name,
+           au.email_confirmed_at,
+           pu.metadata,
+           pu.created_at,
+           pu.updated_at,
+           au.last_sign_in_at as last_login
+         FROM auth.users au
+         LEFT JOIN public.users pu ON pu.auth_user_id = au.id
+         WHERE COALESCE(pu.id, au.id) = $1
+         LIMIT 1`,
         [req.userId]
       );
 
       const user = result.rows[0];
+      const metadata = user.metadata || {};
+      
       res.json({
         id: user.id,
         email: user.email,
-        phone: user.phone,
-        fullName: user.full_name,
-        handle: user.handle,
-        avatarUrl: user.avatar_url,
-        isVerified: user.is_verified,
-        bvn: user.bvn,
-        nin: user.nin,
-        dateOfBirth: user.date_of_birth,
-        address: user.address,
-        city: user.city,
-        state: user.state,
-        country: user.country,
-        occupation: user.occupation,
-        monthlyIncome: user.monthly_income ? parseFloat(user.monthly_income) : null,
-        emergencyContact: {
-          name: user.emergency_contact_name,
-          phone: user.emergency_contact_phone,
-          relationship: user.emergency_contact_relationship,
+        phone: user.phone || '',
+        fullName: user.full_name || '',
+        handle: metadata.handle || '',
+        avatarUrl: metadata.avatar_url || null,
+        isVerified: !!user.email_confirmed_at,
+        bvn: metadata.bvn || null,
+        nin: metadata.nin || null,
+        dateOfBirth: metadata.date_of_birth || null,
+        address: metadata.address || null,
+        city: metadata.city || null,
+        state: metadata.state || null,
+        country: metadata.country || 'Nigeria',
+        occupation: metadata.occupation || null,
+        monthlyIncome: metadata.monthly_income ? parseFloat(metadata.monthly_income) : null,
+        emergencyContact: metadata.emergency_contact || {
+          name: null,
+          phone: null,
+          relationship: null,
         },
-        preferredLanguage: user.preferred_language,
-        notificationPreferences: user.notification_preferences,
-        kycStatus: user.kyc_status,
-        kycDocuments: user.kyc_documents,
+        preferredLanguage: metadata.preferred_language || 'en',
+        notificationPreferences: metadata.notification_preferences || {
+          email: true,
+          sms: true,
+          push: true,
+        },
+        kycStatus: metadata.kyc_status || 'pending',
+        kycDocuments: metadata.kyc_documents || null,
         createdAt: user.created_at,
         updatedAt: user.updated_at,
         lastLogin: user.last_login,
-        status: user.status,
+        status: metadata.status || 'active',
       });
     } catch (error: any) {
       if (error instanceof ValidationError) {
@@ -362,55 +332,88 @@ router.get('/me/achievements', authenticate, async (req: AuthRequest, res: Respo
 // Get user transactions
 router.get('/me/transactions', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    console.log('📋 [TRANSACTIONS] Fetching transactions for user:', req.userId);
     const page = parseInt(req.query.page as string) || 1;
     const pageSize = parseInt(req.query.pageSize as string) || 10;
     const offset = (page - 1) * pageSize;
 
-    // Get contributions
-    const contributionsResult = await pool.query(
-      `SELECT c.id, c.group_id, c.amount, c.payment_method, c.status, c.payment_date, c.created_at,
-              sg.name as group_name
-       FROM contributions c
-       JOIN savings_groups sg ON c.group_id = sg.id
-       WHERE c.user_id = $1
-       ORDER BY c.created_at DESC
-       LIMIT $2 OFFSET $3`,
-      [req.userId, pageSize, offset]
-    );
+    // Get contributions - check if payment_method exists, otherwise get from metadata
+    let contributionsResult;
+    try {
+      contributionsResult = await pool.query(
+        `SELECT c.id, c.group_id, c.amount, c.status, c.created_at,
+                c.payment_reference, c.metadata,
+                sg.name as group_name
+         FROM contributions c
+         JOIN savings_groups sg ON c.group_id = sg.id
+         WHERE c.payer_user_id = $1
+         ORDER BY c.created_at DESC
+         LIMIT $2 OFFSET $3`,
+        [req.userId, pageSize, offset]
+      );
+    } catch (contribError: any) {
+      console.error('❌ [TRANSACTIONS] Error fetching contributions:', contribError.message);
+      // If contributions table doesn't exist or has issues, return empty
+      contributionsResult = { rows: [] };
+    }
 
     // Get payouts
-    const payoutsResult = await pool.query(
-      `SELECT p.id, p.group_id, p.amount, p.status, p.payout_date, p.created_at,
-              sg.name as group_name
-       FROM payouts p
-       JOIN savings_groups sg ON p.group_id = sg.id
-       WHERE p.recipient_id = $1
-       ORDER BY p.created_at DESC
-       LIMIT $2 OFFSET $3`,
-      [req.userId, pageSize, offset]
-    );
+    let payoutsResult;
+    try {
+      payoutsResult = await pool.query(
+        `SELECT p.id, p.group_id, p.amount, p.status, p.payout_date, p.created_at,
+                sg.name as group_name
+         FROM payouts p
+         JOIN savings_groups sg ON p.group_id = sg.id
+         WHERE p.recipient_id = $1
+         ORDER BY p.created_at DESC
+         LIMIT $2 OFFSET $3`,
+        [req.userId, pageSize, offset]
+      );
+    } catch (payoutError: any) {
+      console.error('❌ [TRANSACTIONS] Error fetching payouts:', payoutError.message);
+      // If payouts table doesn't exist or has issues, return empty
+      payoutsResult = { rows: [] };
+    }
 
-    // Get total counts
-    const contributionsCount = await pool.query(
-      'SELECT COUNT(*) FROM contributions WHERE user_id = $1',
-      [req.userId]
-    );
-    const payoutsCount = await pool.query(
-      'SELECT COUNT(*) FROM payouts WHERE recipient_id = $1',
-      [req.userId]
-    );
+    // Get total counts (with error handling)
+    let contributionsCount = { rows: [{ count: '0' }] };
+    let payoutsCount = { rows: [{ count: '0' }] };
+    
+    try {
+      contributionsCount = await pool.query(
+        'SELECT COUNT(*) as count FROM contributions WHERE payer_user_id = $1',
+        [req.userId]
+      );
+    } catch (e) {
+      console.warn('⚠️  [TRANSACTIONS] Could not count contributions:', (e as any).message);
+    }
+    
+    try {
+      payoutsCount = await pool.query(
+        'SELECT COUNT(*) as count FROM payouts WHERE recipient_id = $1',
+        [req.userId]
+      );
+    } catch (e) {
+      console.warn('⚠️  [TRANSACTIONS] Could not count payouts:', (e as any).message);
+    }
 
     const transactions = [
-      ...contributionsResult.rows.map((row) => ({
-        id: row.id,
-        type: 'contribution',
-        groupId: row.group_id,
-        groupName: row.group_name,
-        amount: parseFloat(row.amount),
-        status: row.status,
-        date: row.payment_date || row.created_at,
-        createdAt: row.created_at,
-      })),
+      ...contributionsResult.rows.map((row) => {
+        const metadata = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : (row.metadata || {});
+        return {
+          id: row.id,
+          type: 'contribution',
+          groupId: row.group_id,
+          groupName: row.group_name,
+          amount: parseFloat(row.amount),
+          status: row.status,
+          date: row.created_at, // Use created_at if payment_date doesn't exist
+          createdAt: row.created_at,
+          paymentMethod: metadata.paymentMethod || 'unknown',
+          transactionReference: row.payment_reference || null,
+        };
+      }),
       ...payoutsResult.rows.map((row) => ({
         id: row.id,
         type: 'payout',
@@ -423,14 +426,22 @@ router.get('/me/transactions', authenticate, async (req: AuthRequest, res: Respo
       })),
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
+    console.log('✅ [TRANSACTIONS] Returning', transactions.length, 'transactions');
+
     res.json({
-      transactions,
-      total: parseInt(contributionsCount.rows[0].count) + parseInt(payoutsCount.rows[0].count),
+      data: transactions, // Frontend expects 'data' field
+      transactions, // Also include for compatibility
+      total: parseInt(contributionsCount.rows[0]?.count || '0') + parseInt(payoutsCount.rows[0]?.count || '0'),
       page,
       pageSize,
     });
   } catch (error: any) {
-    res.status(500).json({ message: 'Failed to get transactions', code: 'GET_TRANSACTIONS_ERROR' });
+    console.error('❌ [TRANSACTIONS] Error:', error.message);
+    res.status(500).json({ 
+      message: 'Failed to get transactions', 
+      code: 'GET_TRANSACTIONS_ERROR',
+      ...(process.env.NODE_ENV === 'development' && { details: error.message })
+    });
   }
 });
 
@@ -445,25 +456,35 @@ router.get('/search', authenticate, async (req: AuthRequest, res: Response): Pro
 
     const searchTerm = `%${query}%`;
     const result = await pool.query(
-      `SELECT id, email, phone, full_name, handle, avatar_url, is_verified
-       FROM users
-       WHERE (full_name ILIKE $1 OR handle ILIKE $1 OR email ILIKE $1)
-         AND id != $2
-         AND status = 'active'
+      `SELECT 
+         COALESCE(pu.id, au.id) as id,
+         au.email,
+         COALESCE(pu.phone, au.phone) as phone,
+         pu.full_name,
+         pu.metadata,
+         au.email_confirmed_at
+       FROM auth.users au
+       LEFT JOIN public.users pu ON pu.auth_user_id = au.id
+       WHERE (pu.full_name ILIKE $1 OR pu.metadata->>'handle' ILIKE $1 OR au.email ILIKE $1)
+         AND COALESCE(pu.id, au.id) != $2
+         AND (pu.metadata->>'status' IS NULL OR pu.metadata->>'status' = 'active')
        LIMIT 20`,
       [searchTerm, req.userId]
     );
 
     res.json(
-      result.rows.map((row) => ({
-        id: row.id,
-        email: row.email,
-        phone: row.phone,
-        fullName: row.full_name,
-        handle: row.handle,
-        avatarUrl: row.avatar_url,
-        isVerified: row.is_verified,
-      }))
+      result.rows.map((row) => {
+        const metadata = row.metadata || {};
+        return {
+          id: row.id,
+          email: row.email,
+          phone: row.phone || '',
+          fullName: row.full_name || '',
+          handle: metadata.handle || '',
+          avatarUrl: metadata.avatar_url || null,
+          isVerified: !!row.email_confirmed_at,
+        };
+      })
     );
   } catch (error: any) {
     res.status(500).json({ message: 'Failed to search users', code: 'SEARCH_ERROR' });
