@@ -9,8 +9,9 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
-import {useNavigation} from '@react-navigation/native';
+import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -35,6 +36,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [recentPayments, setRecentPayments] = useState<Payment[]>([]);
+  const [showMoreModal, setShowMoreModal] = useState(false);
 
   const {user} = useAuthStore();
   const {groups, setGroups, isLoading: groupsLoading} = useGroupsStore();
@@ -177,6 +179,34 @@ export default function HomeScreen() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Refresh user data when screen comes into focus (e.g., after avatar upload)
+  useFocusEffect(
+    React.useCallback(() => {
+      const refreshUser = async () => {
+        try {
+          const {userService} = await import('../../services');
+          const profile = await userService.getProfile();
+          const {setUser} = useAuthStore.getState();
+          const currentUser = useAuthStore.getState().user;
+          if (currentUser && profile) {
+            setUser({
+              ...currentUser,
+              avatarUrl: profile.avatarUrl,
+              firstName: profile.firstName,
+              lastName: profile.lastName,
+            });
+          }
+        } catch (error) {
+          // Silently fail - user data refresh is optional
+          if (__DEV__) {
+            console.debug('HomeScreen: Could not refresh user data:', error);
+          }
+        }
+      };
+      refreshUser();
+    }, [])
+  );
   
   // Separate effect for timeout - use ref to avoid stale closure
   useEffect(() => {
@@ -369,7 +399,9 @@ export default function HomeScreen() {
                 </View>
                 <Text style={styles.quickActionText}>Banking</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.quickAction}>
+              <TouchableOpacity 
+                style={styles.quickAction}
+                onPress={() => setShowMoreModal(true)}>
                 <View style={[styles.quickActionIcon, {backgroundColor: colors.gray[100]}]}>
                   <Icon name="dots-horizontal" size={24} color={colors.gray[600]} />
                 </View>
@@ -515,6 +547,86 @@ export default function HomeScreen() {
           </Card>
         )}
       </ScrollView>
+
+      {/* More Services Modal */}
+      <Modal
+        visible={showMoreModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowMoreModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>More Services</Text>
+              <TouchableOpacity
+                onPress={() => setShowMoreModal(false)}
+                style={styles.modalCloseButton}>
+                <Icon name="close" size={24} color={colors.text.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              <View style={styles.moreServicesGrid}>
+                {/* Loans */}
+                <TouchableOpacity
+                  style={styles.moreServiceItem}
+                  onPress={() => {
+                    setShowMoreModal(false);
+                    Alert.alert('Coming Soon', 'Loans feature will be available soon!');
+                  }}>
+                  <View style={[styles.moreServiceIcon, {backgroundColor: colors.green[100]}]}>
+                    <Icon name="cash-multiple" size={28} color={colors.green[600]} />
+                  </View>
+                  <Text style={styles.moreServiceTitle}>Loans</Text>
+                  <Text style={styles.moreServiceSubtitle}>Quick loans for members</Text>
+                </TouchableOpacity>
+
+                {/* Bill Payments */}
+                <TouchableOpacity
+                  style={styles.moreServiceItem}
+                  onPress={() => {
+                    setShowMoreModal(false);
+                    Alert.alert('Coming Soon', 'Bill payments feature will be available soon!');
+                  }}>
+                  <View style={[styles.moreServiceIcon, {backgroundColor: colors.blue[100]}]}>
+                    <Icon name="receipt" size={28} color={colors.blue[600]} />
+                  </View>
+                  <Text style={styles.moreServiceTitle}>Bill Payments</Text>
+                  <Text style={styles.moreServiceSubtitle}>Pay utilities & bills</Text>
+                </TouchableOpacity>
+
+                {/* Savings Goals */}
+                <TouchableOpacity
+                  style={styles.moreServiceItem}
+                  onPress={() => {
+                    setShowMoreModal(false);
+                    Alert.alert('Coming Soon', 'Savings goals feature will be available soon!');
+                  }}>
+                  <View style={[styles.moreServiceIcon, {backgroundColor: colors.primary[100]}]}>
+                    <Icon name="target" size={28} color={colors.primary[600]} />
+                  </View>
+                  <Text style={styles.moreServiceTitle}>Savings Goals</Text>
+                  <Text style={styles.moreServiceSubtitle}>Set and track goals</Text>
+                </TouchableOpacity>
+
+                {/* Referrals */}
+                <TouchableOpacity
+                  style={styles.moreServiceItem}
+                  onPress={() => {
+                    setShowMoreModal(false);
+                    Alert.alert('Coming Soon', 'Referrals feature will be available soon!');
+                  }}>
+                  <View style={[styles.moreServiceIcon, {backgroundColor: colors.secondary[100]}]}>
+                    <Icon name="account-plus" size={28} color={colors.secondary[600]} />
+                  </View>
+                  <Text style={styles.moreServiceTitle}>Referrals</Text>
+                  <Text style={styles.moreServiceSubtitle}>Invite friends & earn</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -734,6 +846,77 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary[500],
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.text.white,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    maxHeight: '80%',
+    paddingBottom: spacing.xl,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+  },
+  modalTitle: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.primary,
+  },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.gray[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBody: {
+    padding: spacing.lg,
+  },
+  moreServicesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  moreServiceItem: {
+    width: '47%',
+    backgroundColor: colors.text.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  moreServiceIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  moreServiceTitle: {
+    fontSize: typography.fontSize.md,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.text.primary,
+    marginBottom: spacing.xs,
+    textAlign: 'center',
+  },
+  moreServiceSubtitle: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+    textAlign: 'center',
   },
 });
 

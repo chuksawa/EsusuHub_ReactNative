@@ -32,6 +32,13 @@ export default function Avatar({uri, name, size = 40, style}: AvatarProps) {
   
   // Convert relative URL to full URL if needed
   const fullUri = React.useMemo(() => getFullUrl(uri), [uri]);
+  
+  // Reset error state when URI changes (new image uploaded)
+  React.useEffect(() => {
+    if (fullUri) {
+      setImageError(false);
+    }
+  }, [fullUri]);
 
   // Get initials from name
   const getInitials = (nameStr?: string): string => {
@@ -50,14 +57,22 @@ export default function Avatar({uri, name, size = 40, style}: AvatarProps) {
 
   // Use image if available and no error
   if (fullUri && !imageError && fullUri.trim() !== '') {
+    // Add cache busting query parameter to force refresh
+    const cacheBustUri = `${fullUri}${fullUri.includes('?') ? '&' : '?'}t=${Date.now()}`;
+    
     return (
       <Image
-        source={{uri: fullUri}}
+        key={fullUri} // Force re-render when URI changes
+        source={{uri: cacheBustUri, cache: 'reload'}}
         style={[{width: size, height: size, borderRadius: size / 2}, style]}
         resizeMode="cover"
         onError={() => {
           console.warn('Avatar image failed to load:', fullUri);
           setImageError(true);
+        }}
+        onLoad={() => {
+          // Reset error state on successful load
+          setImageError(false);
         }}
       />
     );

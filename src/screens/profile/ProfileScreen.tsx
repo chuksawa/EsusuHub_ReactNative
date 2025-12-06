@@ -111,12 +111,25 @@ export default function ProfileScreen() {
       // Upload image
       const result = await imageUploadService.uploadImage(asset);
       
-      // Update profile with new avatar URL
-      const updatedProfile = {...profile!, avatarUrl: result.url};
-      setProfile(updatedProfile);
-      if (user) {
-        setUser({...user, avatarUrl: result.url});
+      // Ensure we have a full URL (backend should return it, but convert if needed)
+      let avatarUrl = result.url;
+      if (avatarUrl && !avatarUrl.startsWith('http')) {
+        const config = await import('../../config/env');
+        const baseUrl = config.config.API_BASE_URL.replace('/api', '');
+        avatarUrl = `${baseUrl}${avatarUrl.startsWith('/') ? '' : '/'}${avatarUrl}`;
       }
+      
+      // Update profile with new avatar URL
+      const updatedProfile = {...profile!, avatarUrl};
+      setProfile(updatedProfile);
+      
+      // Update auth store user
+      if (user) {
+        setUser({...user, avatarUrl});
+      }
+      
+      // Also refresh profile data to get the latest from backend
+      await loadProfileData();
 
       Alert.alert('Success', 'Avatar updated successfully!');
     } catch (error: any) {
