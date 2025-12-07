@@ -1,6 +1,6 @@
 # Azure DevOps Pipeline for Railway Deployment
-# This pipeline builds and deploys the backend to Railway
-# Uses Microsoft-hosted agents (no agent pool setup required!)
+# This version uses self-hosted agents (no parallelism grant needed)
+# Use this if you have a self-hosted agent pool set up
 
 trigger:
   branches:
@@ -9,9 +9,11 @@ trigger:
       - master
       - develop
 
-# Microsoft-hosted agent - automatically available, no setup needed!
+# Use self-hosted agent pool (configure in Azure DevOps)
+# Replace "Default" with your agent pool name
 pool:
-  vmImage: 'ubuntu-latest'
+  name: Default  # Change to your agent pool name
+  # Remove vmImage - that's for Microsoft-hosted only
 
 variables:
   RAILWAY_TOKEN: $(RAILWAY_TOKEN) # Set in Azure DevOps Variables
