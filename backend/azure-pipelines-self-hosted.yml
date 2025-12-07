@@ -15,7 +15,7 @@ trigger:
 pool:
   name: Default  # Change to your agent pool name
   demands: []  # Accept any agent version (remove if you need specific version)
-  # Remove vmImage - that's for Microsoft-hosted only
+  # For Microsoft-hosted, use: vmImage: 'ubuntu-latest' instead
 
 variables:
   RAILWAY_TOKEN: $(RAILWAY_TOKEN) # Set in Azure DevOps Variables

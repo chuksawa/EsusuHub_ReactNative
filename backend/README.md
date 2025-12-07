@@ -39,7 +39,7 @@ Backend API server for the EsusuHub React Native application.
    ```
    
    Edit `.env` and configure:
-   - Database connection details (see [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) for Supabase)
+   - Database connection details (see [SUPABASE_SETUP.md](../docs/SUPABASE_SETUP.md) for Supabase)
    - JWT secrets
    - API base URL
    - CORS origin
@@ -56,7 +56,7 @@ Backend API server for the EsusuHub React Native application.
    **Option B: Supabase (Recommended)**
    - The database schema has already been set up in Supabase
    - RLS policies, indexes, and test data have been configured
-   - See [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) for connection details
+   - See [SUPABASE_SETUP.md](../docs/SUPABASE_SETUP.md) for connection details
 
 4. **Create uploads directory:**
    ```bash
