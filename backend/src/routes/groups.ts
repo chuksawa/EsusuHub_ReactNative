@@ -91,7 +91,7 @@ router.get(
 );
 
 // Get group configuration (MUST come before /:id route)
-router.get('/configuration', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+router.get('/configuration', authenticate, async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
     // system_settings table may not exist in Supabase, so return default configuration
     // In the future, this could be stored in a settings table or environment variables
@@ -124,7 +124,7 @@ router.get('/my-groups', authenticate, async (req: AuthRequest, res: Response): 
     // Handle dev users (they don't exist in database)
     if (req.userId === 'dev-user-123' || req.userId?.startsWith('dev-')) {
       // Return empty array for dev users, or you could return mock data
-      return res.json([]);
+      res.json([]);
     }
 
     // Get user's tenant_id
@@ -202,7 +202,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response): Promis
 
     const row = groupResult.rows[0];
     // Parse settings JSONB - it might be a string or already an object
-    let settings = {};
+    let settings: any = {};
     try {
       if (typeof row.settings === 'string') {
         settings = JSON.parse(row.settings);
@@ -302,11 +302,10 @@ router.post(
 
       // Get user's tenant_id
       console.log('🔍 [CREATE_GROUP] Getting tenant_id...');
-      const userResult = await pool.query({
-        text: 'SELECT tenant_id FROM public.users WHERE id = $1',
-        values: [req.userId],
-        timeout: 3000,
-      });
+      const userResult = await pool.query(
+        'SELECT tenant_id FROM public.users WHERE id = $1',
+        [req.userId]
+      );
       const tenantId = userResult.rows[0]?.tenant_id;
       console.log('✅ [CREATE_GROUP] Tenant ID:', tenantId);
 
@@ -331,25 +330,23 @@ router.post(
       };
 
       console.log('💾 [CREATE_GROUP] Inserting group into database...');
-      const result = await pool.query({
-        text: `INSERT INTO savings_groups (name, description, created_by, tenant_id, settings)
+      const result = await pool.query(
+        `INSERT INTO savings_groups (name, description, created_by, tenant_id, settings)
          VALUES ($1, $2, $3, $4, $5::jsonb)
          RETURNING *`,
-        values: [name, description || null, req.userId, tenantId, JSON.stringify(settings)],
-        timeout: 5000,
-      });
+        [name, description || null, req.userId, tenantId, JSON.stringify(settings)]
+      );
 
       const group = result.rows[0];
       console.log('✅ [CREATE_GROUP] Group created:', group.id);
 
       // Add creator as admin member
       console.log('👤 [CREATE_GROUP] Adding creator as admin member...');
-      await pool.query({
-        text: `INSERT INTO group_memberships (group_id, user_id, role, joined_at)
+      await pool.query(
+        `INSERT INTO group_memberships (group_id, user_id, role, joined_at)
          VALUES ($1, $2, 'admin', CURRENT_DATE)`,
-        values: [group.id, req.userId],
-        timeout: 3000,
-      });
+        [group.id, req.userId]
+      );
       console.log('✅ [CREATE_GROUP] Creator added as admin');
 
       const parsedSettings = typeof group.settings === 'string' ? JSON.parse(group.settings) : (group.settings || settings);

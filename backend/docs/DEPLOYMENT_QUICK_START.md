@@ -2,6 +2,8 @@
 
 This is a quick reference guide. For detailed instructions, see [RAILWAY_DEPLOYMENT.md](./RAILWAY_DEPLOYMENT.md).
 
+**For simple deployment without CI/CD, see [RAILWAY_SIMPLE_DEPLOY.md](./RAILWAY_SIMPLE_DEPLOY.md).**
+
 ## 🚀 Quick Deployment Steps
 
 ### 1. Prepare Your Secrets

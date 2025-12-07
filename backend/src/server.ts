@@ -35,7 +35,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 if (config.nodeEnv === 'development') {
   app.use(morgan('dev'));
   // Additional request logging for debugging
-  app.use((req, res, next) => {
+  app.use((req, _res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} from ${req.ip || req.connection.remoteAddress}`);
     next();
   });
@@ -110,7 +110,7 @@ app.use(errorHandler);
 
 // Start server
 // Railway sets PORT automatically, fallback to config.port
-const PORT = process.env.PORT || config.port;
+const PORT = parseInt(process.env.PORT || String(config.port), 10);
 
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);

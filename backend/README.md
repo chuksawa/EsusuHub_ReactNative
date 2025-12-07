@@ -172,6 +172,13 @@ See `.env.example` for all available environment variables.
 
 The database schema is defined in `../database-schema.sql`. Make sure to run this before starting the server.
 
+## Deployment
+
+For deployment to Railway, see:
+- [docs/RAILWAY_SIMPLE_DEPLOY.md](./docs/RAILWAY_SIMPLE_DEPLOY.md) - Simple deployment guide (no CI/CD)
+- [docs/DEPLOYMENT_QUICK_START.md](./docs/DEPLOYMENT_QUICK_START.md) - Quick reference
+- [docs/RAILWAY_DEPLOYMENT.md](./docs/RAILWAY_DEPLOYMENT.md) - Complete deployment guide
+
 ## Notes
 
 - Payment processing is currently simulated. In production, integrate with a payment gateway.

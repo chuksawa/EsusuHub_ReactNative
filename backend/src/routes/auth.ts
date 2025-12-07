@@ -14,7 +14,7 @@ const router = Router();
 router.post(
   '/register',
   // Add a simple middleware to log request arrival
-  (req, res, next) => {
+  (req, _res, next) => {
     console.log('📨 [REGISTER] Request arrived at route handler');
     console.log('📨 [REGISTER] Body:', JSON.stringify(req.body));
     next();
@@ -72,7 +72,7 @@ router.post(
             const accessToken = generateAccessToken({ userId: mockUser.id, email: mockUser.email });
             const refreshToken = generateRefreshToken({ userId: mockUser.id, email: mockUser.email });
             
-            return res.status(201).json({
+            res.status(201).json({
               user: {
                 id: mockUser.id,
                 email: mockUser.email,
@@ -172,7 +172,7 @@ router.post(
             const accessToken = generateAccessToken({ userId: mockUser.id, email: mockUser.email });
             const refreshToken = generateRefreshToken({ userId: mockUser.id, email: mockUser.email });
             
-            return res.status(201).json({
+            res.status(201).json({
               user: {
                 id: mockUser.id,
                 email: mockUser.email,
@@ -211,7 +211,7 @@ router.post(
             const accessToken = generateAccessToken({ userId: mockUser.id, email: mockUser.email });
             const refreshToken = generateRefreshToken({ userId: mockUser.id, email: mockUser.email });
             
-            return res.status(201).json({
+            res.status(201).json({
               user: {
                 id: mockUser.id,
                 email: mockUser.email,
@@ -259,13 +259,14 @@ router.post(
         return;
       }
       // Provide more detailed error in dev mode
-      const errorMessage = __DEV__ && error.message 
+      const isDev = process.env.NODE_ENV !== 'production';
+      const errorMessage = isDev && error.message 
         ? `Registration failed: ${error.message}` 
         : 'Registration failed';
       res.status(500).json({ 
         message: errorMessage, 
         code: 'REGISTRATION_ERROR',
-        ...(__DEV__ && { details: error.message })
+        ...(isDev && { details: error.message })
       });
     }
   }
@@ -446,7 +447,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
 });
 
 // Logout
-router.post('/logout', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+router.post('/logout', authenticate, async (_req: AuthRequest, res: Response): Promise<void> => {
   // In a production app, you might want to blacklist the token
   res.json({ message: 'Logged out successfully' });
 });

@@ -10,7 +10,8 @@
     "test": "jest",
     "lint": "eslint src --ext .ts",
     "type-check": "tsc --noEmit",
-    "generate-secrets": "node scripts/generate-secrets.js"
+    "generate-secrets": "node scripts/generate-secrets.js",
+    "deploy": "railway up"
   },
   "keywords": [
     "esusu",

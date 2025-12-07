@@ -67,9 +67,13 @@ The backend is configured to work with Supabase:
 
 ## 🚀 Quick Deploy
 
+**For simple deployment (no CI/CD):**
+1. See [RAILWAY_SIMPLE_DEPLOY.md](./RAILWAY_SIMPLE_DEPLOY.md) - easiest method using Railway CLI
+
+**Or follow these steps:**
 1. Generate secrets: `npm run generate-secrets`
 2. Get Supabase connection string from dashboard
-3. Deploy to Railway (see `DEPLOYMENT_QUICK_START.md`)
+3. Deploy to Railway (see `DEPLOYMENT_QUICK_START.md` or `RAILWAY_SIMPLE_DEPLOY.md`)
 4. Set environment variables in Railway
 5. Test: `curl https://your-app.railway.app/health-quick`
 
