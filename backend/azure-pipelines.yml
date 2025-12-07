@@ -10,8 +10,10 @@ trigger:
       - develop
 
 # Microsoft-hosted agent - automatically available, no setup needed!
+# Note: Requires free parallelism grant from https://aka.ms/azpipelines-parallelism-request
 pool:
   vmImage: 'ubuntu-latest'
+  # If you get parallelism error, request free grant or use self-hosted agent
 
 variables:
   RAILWAY_TOKEN: $(RAILWAY_TOKEN) # Set in Azure DevOps Variables

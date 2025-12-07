@@ -1,14 +1,26 @@
 # Quick Guide: Create Azure DevOps Pipeline
 
-## ⚠️ Important: Parallelism Grant Required
+## ⚠️ Important: Agent Configuration
 
-Your pipeline uses **Microsoft-hosted agents**, which require a free parallelism grant from Microsoft.
+Your pipeline uses **Microsoft-hosted agents** by default.
 
-**If you see a parallelism error:**
-1. Request free grant: https://aka.ms/azpipelines-parallelism-request (takes 24-48 hours)
-2. Or use self-hosted agent (see `AZURE_PARALLELISM_FIX.md`)
+**Common errors:**
+- **Parallelism error:** Request free grant at https://aka.ms/azpipelines-parallelism-request
+- **Agent version error:** You're using self-hosted pool but no agent is set up - switch to Microsoft-hosted (see `AGENT_VERSION_FIX.md`)
 
-**If you have the grant or self-hosted agent:**
+**Make sure your pipeline uses:**
+```yaml
+pool:
+  vmImage: 'ubuntu-latest'  # ✅ Microsoft-hosted
+```
+
+**NOT:**
+```yaml
+pool:
+  name: Default  # ❌ Self-hosted (requires agent setup)
+```
+
+**If you have the grant:**
 Follow these steps:
 
 ## Step-by-Step: Create Your Pipeline

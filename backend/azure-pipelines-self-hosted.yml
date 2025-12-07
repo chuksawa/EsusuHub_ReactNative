@@ -11,8 +11,10 @@ trigger:
 
 # Use self-hosted agent pool (configure in Azure DevOps)
 # Replace "Default" with your agent pool name
+# IMPORTANT: Only use this if you have a self-hosted agent set up!
 pool:
   name: Default  # Change to your agent pool name
+  demands: []  # Accept any agent version (remove if you need specific version)
   # Remove vmImage - that's for Microsoft-hosted only
 
 variables:
