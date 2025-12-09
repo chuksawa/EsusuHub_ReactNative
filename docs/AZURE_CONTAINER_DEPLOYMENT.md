@@ -32,7 +32,7 @@
 1. **Azure Portal** → **Create a resource**
 2. **Search:** "Container Registry"
 3. **Create** → Fill in:
-   - **Registry name:** `esusuhubregistry` (or your choice)
+   - **Registry name:** `esusuhubcontainer` (or your choice)
    - **Resource group:** Same as your web app
    - **SKU:** Basic (cheapest)
 4. **Review + Create** → **Create**
@@ -57,7 +57,7 @@ pool:
 variables:
   dockerRegistryServiceConnection: 'ACR-Connection' # You'll create this
   imageRepository: 'esusuhub-backend'
-  containerRegistry: 'esusuhubregistry.azurecr.io' # Your ACR name
+  containerRegistry: 'esusuhubcontainer.azurecr.io' # Your ACR name
   dockerfilePath: 'backend/Dockerfile'
   tag: '$(Build.BuildId)'
   azureSubscription: 'your-subscription-id' # Get from Azure Portal
@@ -185,17 +185,17 @@ stages:
 
 2. **Tag for ACR:**
    ```powershell
-   docker tag esusuhub-backend esusuhubregistry.azurecr.io/esusuhub-backend:latest
+   docker tag esusuhub-backend esusuhubcontainer.azurecr.io/esusuhub-backend:latest
    ```
 
 3. **Login to ACR:**
    ```powershell
-   az acr login --name esusuhubregistry
+   az acr login --name esusuhubcontainer
    ```
 
 4. **Push to ACR:**
    ```powershell
-   docker push esusuhubregistry.azurecr.io/esusuhub-backend:latest
+   docker push esusuhubcontainer.azurecr.io/esusuhub-backend:latest
    ```
 
 5. **Configure app** (same as Option 1, Step 5)

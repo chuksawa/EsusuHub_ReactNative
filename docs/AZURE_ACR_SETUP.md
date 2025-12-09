@@ -60,15 +60,15 @@ Replace `esusuhubcontainer` with your actual registry name if different.
 cd C:\Dev\EsusuHub_ReactNative
 
 # Build the image
-docker build -t esusuhubregistry.azurecr.io/esusuhub-backend:latest -f backend/Dockerfile backend
+docker build -t esusuhubcontainer.azurecr.io/esusuhub-backend:latest -f backend/Dockerfile backend
 ```
 
-**Note:** Replace `esusuhubregistry` with your actual registry name.
+**Note:** Replace `esusuhubcontainer` with your actual registry name.
 
 ### Step 7: Push Image to ACR
 
 ```powershell
-docker push esusuhubregistry.azurecr.io/esusuhub-backend:latest
+docker push esusuhubcontainer.azurecr.io/esusuhub-backend:latest
 ```
 
 **This will:**
@@ -82,7 +82,7 @@ docker push esusuhubregistry.azurecr.io/esusuhub-backend:latest
 2. **Deployment Center** → **Containers** tab
 3. **Configure:**
    - **Image source:** Azure Container Registry
-   - **Registry:** Select your registry (`esusuhubregistry`)
+   - **Registry:** Select your registry (`esusuhubcontainer`)
    - **Image:** `esusuhub-backend`
    - **Tag:** `latest`
    - **Continuous Deployment:** Enable (optional, for auto-updates)
@@ -130,7 +130,7 @@ CORS_ORIGIN = *
 
 ### "unauthorized: authentication required"
 - Make sure you enabled admin user (Step 2)
-- Try logging in again: `az acr login --name esusuhubregistry`
+- Try logging in again: `az acr login --name esusuhubcontainer`
 
 ### "docker: command not found"
 - Install Docker Desktop: https://www.docker.com/products/docker-desktop
@@ -152,19 +152,19 @@ CORS_ORIGIN = *
 az login
 
 # Login to ACR
-az acr login --name esusuhubregistry
+az acr login --name esusuhubcontainer
 
 # Build image
-docker build -t esusuhubregistry.azurecr.io/esusuhub-backend:latest -f backend/Dockerfile backend
+docker build -t esusuhubcontainer.azurecr.io/esusuhub-backend:latest -f backend/Dockerfile backend
 
 # Push image
-docker push esusuhubregistry.azurecr.io/esusuhub-backend:latest
+docker push esusuhubcontainer.azurecr.io/esusuhub-backend:latest
 
 # List images in ACR
-az acr repository list --name esusuhubregistry
+az acr repository list --name esusuhubcontainer
 
 # View image tags
-az acr repository show-tags --name esusuhubregistry --repository esusuhub-backend
+az acr repository show-tags --name esusuhubcontainer --repository esusuhub-backend
 ```
 
 ## Next Steps (Optional): Set Up CI/CD Pipeline
