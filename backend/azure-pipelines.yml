@@ -1,5 +1,5 @@
-# Azure DevOps Pipeline for Railway Deployment
-# This pipeline builds and deploys the backend to Railway
+# Azure DevOps Pipeline for Azure App Service Deployment
+# This pipeline builds Docker image, pushes to ACR, and deploys to App Service
 # Uses Microsoft-hosted agents (no agent pool setup required!)
 
 trigger:
@@ -7,7 +7,6 @@ trigger:
     include:
       - main
       - master
-      - develop
 
 # Microsoft-hosted agent - automatically available, no setup needed!
 # Note: Requires free parallelism grant from https://aka.ms/azpipelines-parallelism-request
@@ -16,37 +15,60 @@ pool:
   # If you get parallelism error, request free grant or use self-hosted agent
 
 variables:
-  RAILWAY_TOKEN: $(RAILWAY_TOKEN) # Set in Azure DevOps Variables
+  # Azure Container Registry
+  ACR_NAME: 'esusuhubcontainer'
+  ACR_REGISTRY: 'esusuhubcontainer.azurecr.io'
+  IMAGE_NAME: 'esusuhub-backend'
+  IMAGE_TAG: '$(Build.BuildId)'  # Use build ID as tag
+  # Azure App Service
+  APP_SERVICE_NAME: 'esusuhubappserver'
+  RESOURCE_GROUP: 'EsusuHub-RG'  # Update with your resource group name
+  # Node version
   NODE_VERSION: '18.x'
 
 steps:
+  # Install Node.js
   - task: NodeTool@0
     inputs:
       versionSpec: $(NODE_VERSION)
     displayName: 'Install Node.js'
 
-  - script: |
-      npm install -g @railway/cli
-    displayName: 'Install Railway CLI'
+  # Install Docker
+  - task: Docker@2
+    displayName: 'Login to Azure Container Registry'
+    inputs:
+      command: login
+      containerRegistry: 'ACR_Connection'  # Create service connection in Azure DevOps
+      # Alternative: Use Azure CLI
+      # az acr login --name $(ACR_NAME)
 
-  - script: |
-      cd backend
-      npm ci
-      npm run build
-    displayName: 'Build TypeScript'
+  # Build Docker image
+  - task: Docker@2
+    displayName: 'Build and Push Docker Image'
+    inputs:
+      command: buildAndPush
+      repository: $(IMAGE_NAME)
+      dockerfile: 'backend/Dockerfile'
+      containerRegistry: 'ACR_Connection'
+      tags: |
+        $(IMAGE_TAG)
+        latest
+      buildContext: 'backend'
 
-  - script: |
-      cd backend
-      export RAILWAY_TOKEN=$(RAILWAY_TOKEN)
-      railway up --detach
-    displayName: 'Deploy to Railway'
-    env:
-      RAILWAY_TOKEN: $(RAILWAY_TOKEN)
-    condition: and(succeeded(), ne(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  # Deploy to Azure App Service
+  - task: AzureWebAppContainer@1
+    displayName: 'Deploy to Azure App Service'
+    inputs:
+      azureSubscription: 'Azure_Connection'  # Create service connection in Azure DevOps
+      appName: $(APP_SERVICE_NAME)
+      resourceGroupName: $(RESOURCE_GROUP)
+      containers: |
+        $(ACR_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 
+  # Deployment summary
   - script: |
       echo "Deployment completed successfully"
-      echo "Service URL: Check Railway dashboard for your service URL"
+      echo "Service URL: https://$(APP_SERVICE_NAME)-etaceafxd2h6gzdc.canadacentral-01.azurewebsites.net"
+      echo "Image: $(ACR_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
     displayName: 'Deployment Summary'
     condition: succeeded()
-

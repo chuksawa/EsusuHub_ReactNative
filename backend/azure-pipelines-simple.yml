@@ -1,0 +1,72 @@
+# Azure DevOps Pipeline for Azure App Service Deployment (Simple Version)
+# This version uses Azure CLI instead of Docker tasks
+# Easier to set up - only requires Azure service connection
+
+trigger:
+  branches:
+    include:
+      - main
+      - master
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  ACR_NAME: 'esusuhubcontainer'
+  APP_SERVICE_NAME: 'esusuhubappserver'
+  RESOURCE_GROUP: 'EsusuHub-RG'  # Update with your resource group name
+  NODE_VERSION: '18.x'
+
+steps:
+  # Install Node.js
+  - task: NodeTool@0
+    inputs:
+      versionSpec: $(NODE_VERSION)
+    displayName: 'Install Node.js'
+
+  # Install Azure CLI
+  - task: AzureCLI@2
+    displayName: 'Login to Azure and ACR'
+    inputs:
+      azureSubscription: 'Azure_Connection'  # Create service connection in Azure DevOps
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        # Login to ACR
+        az acr login --name $(ACR_NAME)
+        
+        # Build and push Docker image
+        cd backend
+        az acr build \
+          --registry $(ACR_NAME) \
+          --image esusuhub-backend:$(Build.BuildId) \
+          --image esusuhub-backend:latest \
+          .
+
+  # Update App Service to use new image
+  - task: AzureCLI@2
+    displayName: 'Deploy to App Service'
+    inputs:
+      azureSubscription: 'Azure_Connection'
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        # Update App Service to pull latest image
+        az webapp config container set \
+          --name $(APP_SERVICE_NAME) \
+          --resource-group $(RESOURCE_GROUP) \
+          --docker-custom-image-name $(ACR_NAME).azurecr.io/esusuhub-backend:latest \
+          --docker-registry-server-url https://$(ACR_NAME).azurecr.io
+        
+        # Restart App Service
+        az webapp restart \
+          --name $(APP_SERVICE_NAME) \
+          --resource-group $(RESOURCE_GROUP)
+
+  # Deployment summary
+  - script: |
+      echo "Deployment completed successfully"
+      echo "Service URL: https://$(APP_SERVICE_NAME)-etaceafxd2h6gzdc.canadacentral-01.azurewebsites.net"
+    displayName: 'Deployment Summary'
+    condition: succeeded()
+

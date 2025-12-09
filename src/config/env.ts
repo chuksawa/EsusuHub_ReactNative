@@ -35,7 +35,8 @@ const getApiBaseUrl = (): string => {
     // If this doesn't work, try: http://10.0.2.2:5166/api or http://10.0.0.187:5166/api
     return 'http://localhost:5166/api';
   }
-  return 'https://api.esusuhub.com/api';
+  // Production: Azure App Service backend
+  return 'https://esusuhubappserver-etaceafxd2h6gzdc.canadacentral-01.azurewebsites.net/api';
 };
 
 export const config = {

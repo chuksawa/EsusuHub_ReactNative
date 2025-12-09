@@ -3,30 +3,44 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Check if this is a Supabase connection
+const isSupabase = process.env.DATABASE_URL?.includes('supabase') || 
+                   process.env.DATABASE_URL?.includes('pooler.supabase.com') ||
+                   process.env.DB_HOST?.includes('supabase');
+
+// Build pool config
 const poolConfig: PoolConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432', 10),
-  database: process.env.DB_NAME || 'esusuhub',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000, // Increased to 10 seconds for Supabase
-  // Enable SSL for Supabase connections
-  ssl: process.env.DATABASE_URL?.includes('supabase') || process.env.DB_HOST?.includes('supabase')
-    ? { rejectUnauthorized: false }
-    : undefined,
 };
 
 // Use DATABASE_URL if provided (for Supabase/production)
 if (process.env.DATABASE_URL) {
-  poolConfig.connectionString = process.env.DATABASE_URL;
-  // Supabase requires SSL
-  if (process.env.DATABASE_URL.includes('supabase')) {
+  let connectionString = process.env.DATABASE_URL;
+  
+  // For Supabase, remove sslmode from URL and handle SSL via config
+  // This ensures our SSL config (rejectUnauthorized: false) is used
+  if (isSupabase) {
+    // Remove sslmode parameter from connection string
+    connectionString = connectionString.replace(/[?&]sslmode=[^&]*/g, '');
+    // Set SSL config explicitly
     poolConfig.ssl = { rejectUnauthorized: false };
   }
-  // Override timeout when using connection string
-  poolConfig.connectionTimeoutMillis = 10000;
+  
+  poolConfig.connectionString = connectionString;
+} else {
+  // Use individual parameters (for local development)
+  poolConfig.host = process.env.DB_HOST || 'localhost';
+  poolConfig.port = parseInt(process.env.DB_PORT || '5432', 10);
+  poolConfig.database = process.env.DB_NAME || 'esusuhub';
+  poolConfig.user = process.env.DB_USER || 'postgres';
+  poolConfig.password = process.env.DB_PASSWORD || 'postgres';
+  
+  // Enable SSL for Supabase even with individual params
+  if (isSupabase) {
+    poolConfig.ssl = { rejectUnauthorized: false };
+  }
 }
 
 export const pool = new Pool(poolConfig);

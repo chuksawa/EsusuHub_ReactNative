@@ -174,10 +174,31 @@ The database schema is defined in `../database-schema.sql`. Make sure to run thi
 
 ## Deployment
 
-For deployment to Railway, see:
-- [docs/RAILWAY_SIMPLE_DEPLOY.md](./docs/RAILWAY_SIMPLE_DEPLOY.md) - Simple deployment guide (no CI/CD)
-- [docs/DEPLOYMENT_QUICK_START.md](./docs/DEPLOYMENT_QUICK_START.md) - Quick reference
-- [docs/RAILWAY_DEPLOYMENT.md](./docs/RAILWAY_DEPLOYMENT.md) - Complete deployment guide
+The backend is deployed to **Azure App Service** using Docker containers.
+
+**Current Setup:**
+- **Service:** Azure App Service (`esusuhubappserver`)
+- **Container Registry:** Azure Container Registry (`esusuhubcontainer`)
+- **Repository:** Azure DevOps
+- **URL:** `https://esusuhubappserver-etaceafxd2h6gzdc.canadacentral-01.azurewebsites.net`
+
+**Deployment Documentation:**
+- [../docs/CURRENT_DEPLOYMENT_SETUP.md](../docs/CURRENT_DEPLOYMENT_SETUP.md) - Current deployment setup overview
+- [../docs/AZURE_DEPLOYMENT_SUCCESS.md](../docs/AZURE_DEPLOYMENT_SUCCESS.md) - Deployment success summary
+- [../docs/AZURE_APP_SERVICE_SETUP.md](../docs/AZURE_APP_SERVICE_SETUP.md) - App Service setup guide
+- [../docs/AZURE_ACR_SETUP.md](../docs/AZURE_ACR_SETUP.md) - Container Registry setup
+- [../docs/AZURE_ACR_LOCAL_BUILD.md](../docs/AZURE_ACR_LOCAL_BUILD.md) - Local Docker build and push
+- [azure-pipelines.yml](./azure-pipelines.yml) - Azure DevOps CI/CD pipeline
+
+**Quick Deploy:**
+```powershell
+# Build and push to ACR
+.\deploy-acr.ps1
+
+# Or manually:
+docker build -t esusuhubcontainer.azurecr.io/esusuhub-backend:latest -f backend/Dockerfile backend
+docker push esusuhubcontainer.azurecr.io/esusuhub-backend:latest
+```
 
 ## Notes
 

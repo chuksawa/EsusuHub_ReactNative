@@ -16,6 +16,10 @@ import bankingRoutes from './routes/banking';
 
 const app: Express = express();
 
+// Trust proxy for Azure App Service (required for rate limiting and IP detection)
+// Azure App Service uses a reverse proxy, so we need to trust the X-Forwarded-* headers
+app.set('trust proxy', true);
+
 // Security middleware
 app.use(helmet());
 app.use(
